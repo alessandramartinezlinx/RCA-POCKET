@@ -1,0 +1,16 @@
+# RCA Pocket — Dependências Python
+# Instale com: pip install -r requirements.txt
+
+# Dashboard e visualização
+streamlit>=1.32.0
+plotly>=5.19.0
+
+# Manipulação de dados
+pandas>=2.2.0
+openpyxl>=3.1.2
+
+# HTTP / Jira API
+requests>=2.31.0
+
+# YAML (já no projeto principal, listado para completude)
+pyyaml>=6.0.2

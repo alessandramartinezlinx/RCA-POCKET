@@ -1,0 +1,200 @@
+﻿# =============================================================================
+# RCA Pocket - Configuração Central
+# Edite este arquivo para personalizar sem mexer no código Python.
+# =============================================================================
+
+jira:
+  base_url: "https://jira.linx.com.br"
+  # Token  prioridade de leitura:
+  #   1. Variável de ambiente JIRA_API_TOKEN  <- injetada pela pipeline via Azure Key Vault
+  #      (MVXDEV-KEYVAULT > jira-api-token-robot, task AzureKeyVault@2 em parameters.yaml)
+  #   2. Campo "token" abaixo                 <- uso local em desenvolvimento
+  #   3. "SEU_TOKEN_AQUI" (valor padrão)      <- ativa modo MOCK automaticamente
+  # Para gerar PAT local: Jira > Perfil > Personal Access Tokens
+  token: "SEU_TOKEN_AQUI"
+  auth_type: "pat"
+  filter_id: "62693"
+  # Campos mínimos para reduzir payload na API (economiza recursos do DC)
+  fields:
+    - summary
+    - status
+    - priority
+    - labels
+    - assignee
+    - created
+    - updated
+    - description
+    - resolution
+    - resolutiondate
+    - comment        # últimos comentários — usado para preencher "Ação Realizada no Bug"
+  max_results_per_page: 100
+
+cache:
+  pasta: "data"
+  arquivo_cache: "data/issues_cache.json"
+  arquivo_ultima_sync: "data/last_sync.txt"
+  # D+1: script roda segunda à noite; delta busca apenas issues atualizadas
+  delta_update: true
+  # Paralelismo na paginação: busca todas as páginas simultaneamente (máx. 4 workers)
+  # Útil para volumes > 500 issues. Manter false em ambientes com rate limit rigoroso.
+  parallel_pagination: false
+
+excel:
+  arquivo_saida: "RCA_Pocket.xlsx"
+  # URL do Excel Online no SharePoint (com ?web=1 para forçar abertura no browser)
+  # Exemplo: https://suaempresa.sharepoint.com/sites/QA/RCA_Pocket.xlsx?web=1
+  # Deixe vazio enquanto o arquivo ainda nao estiver no SharePoint
+  sharepoint_url: ""
+
+# =============================================================================
+# Classificação automática de tipo de erro por palavras-chave
+# Adicione mais keywords conforme padrões identificados no seu Jira
+# =============================================================================
+tipos_erro:
+  "Banco de Dados":
+    keywords:
+      - "ora-"
+      - "sql"
+      - "deadlock"
+      - "query"
+      - "connection pool"
+      - "rollback"
+      - "tablespace"
+      - "index"
+      - "constraint"
+      - "lock"
+      - "undo"
+      - "jdbc"
+      - "cursor"
+      - "full scan"
+      - "hash join"
+      - "grant"
+      - "schema"
+
+  "Sistema":
+    keywords:
+      - "nullpointer"
+      - "null pointer"
+      - "npe"
+      - "error 500"
+      - "500"
+      - "exception"
+      - "stacktrace"
+      - "internal server error"
+      - "outofmemory"
+      - "heap"
+      - "thread leak"
+      - "overflow"
+      - "stackoverflow"
+      - "classnotfound"
+      - "null"
+      - "bug"
+      - "incorreto"
+      - "divergência"
+
+  "Indisponibilidade":
+    keywords:
+      - "timeout"
+      - "indisponível"
+      - "fora do ar"
+      - "instável"
+      - "lentidão"
+      - "lento"
+      - "demora"
+      - "sem resposta"
+      - "não responde"
+      - "connection refused"
+      - "503"
+      - "502"
+      - "horas de pico"
+      - "performance degradada"
+      - "degradada"
+
+  "Integração":
+    keywords:
+      - "webhook"
+      - "integração"
+      - "serviço externo"
+      - "endpoint"
+      - "sefaz"
+      - "xml inválido"
+      - "payload"
+      - "nfe"
+      - "cte"
+      - "retorno"
+      - "api externa"
+      - "soap"
+      - "rest"
+      - "idempotên"
+
+  "Configuração":
+    keywords:
+      - "configuração"
+      - "parâmetro"
+      - "permissão"
+      - "profile"
+      - "perfil"
+      - "acesso"
+      - "roles"
+      - "grant"
+      - "setup"
+      - "truststore"
+      - "ambiente"
+
+  "Segurança":
+    keywords:
+      - "certificado"
+      - "autenticação"
+      - "token expirado"
+      - "acesso negado"
+      - "unauthorized"
+      - "403"
+      - "401"
+      - "ssl"
+      - "tls"
+      - "jwt"
+      - "expirado"
+      - "renovação de certificado"
+
+  "Outro":
+    keywords: []
+
+# =============================================================================
+# Times e Áreas  mapeamento de labels Jira para responsáveis
+# =============================================================================
+times:
+  Suprimentos:
+    areas:
+      - nome: Entrada XML
+        labels_jira:
+          - Entrada XML
+          - entrada-xml
+          - xml-nfe
+          - XML
+          - XML_NF
+        qa_principal: Jenifer Lopes
+        qa_secundario: Guilherme Rocha
+        dev_principal: Vinícius Souza Martins
+        dev_secundario: Willian Dias Brito
+      - nome: Balanço
+        labels_jira:
+          - Balanço
+          - Balanco
+          - balanco
+          - inventario
+          - BALANCO
+        qa_principal: Ana Paula Coelho
+        qa_secundario: Guilherme Rocha
+        dev_principal: Willian Dias Brito
+        dev_secundario: João Vitor Leone
+      - nome: Compras 2.0
+        labels_jira:
+          - Compras 2.0
+          - Compras
+          - compras
+          - sugestao-compras
+          - pedido-compras
+        qa_principal: Guilherme Rocha
+        qa_secundario: Jenifer Lopes
+        dev_principal: Rafael Flecha
+        dev_secundario: Mauricio Maia
