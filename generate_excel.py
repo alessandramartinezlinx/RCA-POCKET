@@ -15,7 +15,7 @@ Se o arquivo já existir:
 import os
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import yaml
 from openpyxl import Workbook, load_workbook
@@ -127,7 +127,7 @@ def _to_excel_date(val):
 # =============================================================================
 
 DADOS_COLS = [
-    # ── BLOCO 1: Identificação Jira (cabeçalho azul escuro A–G) ──────────────
+    # ── BLOCO 1: Identificação Jira (cabeçalho azul escuro A–J) ──────────────
     ("A", "Key",                       14),
     ("B", "Resumo",                    52),
     ("C", "Status Jira",               15),
@@ -135,26 +135,34 @@ DADOS_COLS = [
     ("E", "Data Criação",              14),
     ("F", "Data Resolução",            14),
     ("G", "Dias p/ Resolver",          14),
-    # ── BLOCO 2: Categorização Jira (cabeçalho slate H–K) ────────────────────
-    ("H", "Time",                      16),
-    ("I", "Área",                      18),
-    ("J", "Tipo Erro (Auto)",          18),
-    ("K", "Ação Realizada no Bug",     50),
-    # ── BLOCO 3: Análise Manual (cabeçalho verde L–S) ───────────────────────
-    ("L", "Análise da Causa",        40),
-    ("M", "Tipo de Ajuste",           22),
-    ("N", "Possui TA",               14),
-    ("O", "Problema Resolvido?",     18),
-    ("P", "Item p/ Resolução Def.",  42),
-    ("Q", "QA Principal",            18),
-    ("R", "Dev Principal",           18),
-    ("S", "Analisado",               14),
+    ("H", "DeV Responsável pelo Bug",  20),
+    ("I", "QA Responsável pelo Bug",   20),
+    ("J", "Qtd Vínculos",              13),
+    ("K", "Causa Raiz",                40),
+    # ── BLOCO 2: Categorização Jira (cabeçalho slate L–O) ────────────────────
+    ("L", "Time",                      16),
+    ("M", "Área",                      18),
+    ("N", "Tipo Erro (Auto)",          18),
+    ("O", "Ação Realizada no Bug",     50),
+    # ── BLOCO 3: Análise Manual (cabeçalho verde P–AA) ───────────────────────
+    ("P", "Análise da Causa",          40),
+    ("Q", "Tipo de Ajuste",            22),
+    ("R", "Possui TA",                 14),
+    ("S", "Resultado da Automação",    20),
+    ("T", "Contexto",                  40),
+    ("U", "Problema Resolvido?",       18),
+    ("V", "Item p/ Resolução Def.",    42),
+    ("W", "QA Principal",              18),
+    ("X", "Dev Principal",             18),
+    ("Y", "Issue de Acompanhamento",   18),
+    ("Z", "Analisado",                 14),
+    ("AA", "Semana",                   12),
 ]
 
 # Cores dos 3 blocos de cabeçalho
-_BG_BLOCO1 = "1F4E79"   # azul escuro  — A–G (dados Jira)
-_BG_BLOCO2 = "44546A"   # slate        — H–K (categorização)
-_BG_BLOCO3 = "375623"   # verde escuro — L–S (análise manual)
+_BG_BLOCO1 = "1F4E79"   # azul escuro  — A–K (dados Jira + vínculos + causa raiz)
+_BG_BLOCO2 = "44546A"   # slate        — L–O (categorização)
+_BG_BLOCO3 = "375623"   # verde escuro — P–AA (análise manual)
 
 def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     ws.title = "📊 Dados"
@@ -164,28 +172,30 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     # ── Cabeçalho com 3 blocos de cores ──────────────────────────────────────
     headers = [col[1] for col in DADOS_COLS]
     _header_style(ws, 1, headers, bg=_BG_BLOCO1)
-    for ci in range(8, 12):   # H–K → bloco 2
+    for ci in range(12, 16):   # L–O → bloco 2
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO2)
-    for ci in range(12, 20):  # L–S → bloco 3 (agora 8 colunas)
+    for ci in range(16, 28):  # P–AA → bloco 3 (12 colunas)
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO3)
 
     _set_col_widths(ws, {col[0]: col[2] for col in DADOS_COLS})
 
     # ── Fills pastel por bloco (aplicados em TODAS as linhas de dados) ────────
-    fill_b1     = PatternFill("solid", fgColor="D6E4F0")  # azul pastel    — A–G
-    fill_b2     = PatternFill("solid", fgColor="E8EAED")  # cinza-azul pastel — H–K
-    fill_b3     = PatternFill("solid", fgColor="EBF1DE")  # verde pastel   — L–R
+    fill_b1     = PatternFill("solid", fgColor="D6E4F0")  # azul pastel    — A–K
+    fill_b2     = PatternFill("solid", fgColor="E8EAED")  # cinza-azul pastel — L–O
+    fill_b3     = PatternFill("solid", fgColor="EBF1DE")  # verde pastel   — P–AA
     fill_frozen = PatternFill("solid", fgColor="EFF6FF")  # azul claro — linhas congeladas
 
     # ── Validações — string inline com unicode explícito (compatível Excel + LibreOffice) ──────
     _sim_nao = '"Sim,N\u00e3o"'   # "Sim,Não"
-    _ajuste  = '"C\u00f3digo,Banco de Dados,Infraestrutura,Contrata\u00e7\u00e3o de ferramenta"'
-    dv_ajuste    = DataValidation(type="list", formula1=_ajuste,   allow_blank=True)
-    dv_possui_ta = DataValidation(type="list", formula1=_sim_nao,  allow_blank=True)
-    dv_prob_res  = DataValidation(type="list", formula1=_sim_nao,  allow_blank=True)
-    dv_analisado = DataValidation(type="list", formula1=_sim_nao,  allow_blank=True)
+    _ajuste  = '"C\u00f3digo,Banco de Dados,Infraestrutura,Terceiros"'
+    _resultado_auto = '"Detectou problema,N\u00e3o detectou,N\u00e3o se Aplica"'
+    dv_ajuste         = DataValidation(type="list", formula1=_ajuste,          allow_blank=True)
+    dv_possui_ta      = DataValidation(type="list", formula1=_sim_nao,         allow_blank=True)
+    dv_resultado_auto = DataValidation(type="list", formula1=_resultado_auto,  allow_blank=True)
+    dv_prob_res       = DataValidation(type="list", formula1=_sim_nao,         allow_blank=True)
+    dv_analisado      = DataValidation(type="list", formula1=_sim_nao,         allow_blank=True)
 
     dados_analisados  = preserved.get("dados_analisados", {})
     dados_manual_cols = preserved.get("dados_manual_cols", {})
@@ -232,18 +242,26 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             _to_excel_date(data_criacao),                  # E  Data Criação
             _to_excel_date(data_resolucao),                # F  Data Resolução
             None,                                          # G  Dias p/ Resolver ← fórmula
-            issue.get("time", ""),                         # H  Time
-            issue.get("area", ""),                         # I  Área
-            issue.get("tipo_erro_auto", ""),               # J  Tipo Erro (Auto)
-            issue.get("acao_realizada", ""),               # K  Ação Realizada no Bug
-            _m("analise_causa"),                  # L  Análise da Causa ← manual
-            _m("ajuste_realizado"),               # M  Tipo de Ajuste ← manual
-            _m("possui_ta"),                      # N  Possui TA ← manual
-            _m("problema_resolvido"),             # O  Problema Resolvido? ← manual
-            _m("item_resolucao_def"),             # P  Item p/ Resolução Def. ← manual
-            issue.get("qa_principal", ""),         # Q  QA Principal
-            issue.get("dev_principal", ""),        # R  Dev Principal
-            _m("analisado"),                      # S  Analisado ← manual (ÚLTIMA)
+            issue.get("dev_responsavel_bug", ""),          # H  DeV Responsável pelo Bug
+            issue.get("qa_responsavel_bug", ""),           # I  QA Responsável pelo Bug
+            issue.get("qtd_vinculos", 0),                  # J  Qtd Vínculos
+            _m("causa_raiz"),                              # K  Causa Raiz ← manual
+            issue.get("time", ""),                         # L  Time
+            issue.get("area", ""),                         # M  Área
+            issue.get("tipo_erro_auto", ""),               # N  Tipo Erro (Auto)
+            issue.get("acao_realizada", ""),               # O  Ação Realizada no Bug
+            _m("analise_causa"),                           # P  Análise da Causa ← manual
+            _m("ajuste_realizado"),                        # Q  Tipo de Ajuste ← manual
+            _m("possui_ta"),                               # R  Possui TA ← manual
+            _m("resultado_automacao"),                     # S  Resultado da Automação ← manual
+            _m("contexto"),                                # T  Contexto ← manual
+            _m("problema_resolvido"),                      # U  Problema Resolvido? ← manual
+            _m("item_resolucao_def"),                      # V  Item p/ Resolução Def. ← manual
+            issue.get("qa_principal", ""),                 # W  QA Principal
+            issue.get("dev_principal", ""),                # X  Dev Principal
+            _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
+            _m("analisado"),                               # Z  Analisado ← manual
+            issue.get("_semana", ""),                      # AA Semana
         ]
 
         # Escreve valores base
@@ -254,9 +272,9 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             cell.alignment = Alignment(vertical="center", wrap_text=False)
 
         # Aplica cor pastel de bloco em TODAS as células da linha
-        for ci in range(1, 8):    ws.cell(row=row_idx, column=ci).fill = fill_b1
-        for ci in range(8, 12):   ws.cell(row=row_idx, column=ci).fill = fill_b2
-        for ci in range(12, 20):  ws.cell(row=row_idx, column=ci).fill = fill_b3
+        for ci in range(1, 12):   ws.cell(row=row_idx, column=ci).fill = fill_b1  # A-K
+        for ci in range(12, 16):  ws.cell(row=row_idx, column=ci).fill = fill_b2  # L-O
+        for ci in range(16, 28):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-AA
 
         # G (7): fórmula — diferença em dias entre datas
         g_cell = ws.cell(row=row_idx, column=7)
@@ -276,10 +294,10 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             if c.value:
                 c.number_format = "DD/MM/YYYY"
 
-        # K (11): Ação Realizada — wrap text; altura variável
-        k_cell = ws.cell(row=row_idx, column=11)
-        k_cell.alignment = Alignment(vertical="top", wrap_text=True)
-        if vals[10]:
+        # O (15): Ação Realizada — wrap text; altura variável
+        o_cell = ws.cell(row=row_idx, column=15)
+        o_cell.alignment = Alignment(vertical="top", wrap_text=True)
+        if vals[14]:  # vals[14] = Ação Realizada (posição O)
             ws.row_dimensions[row_idx].height = 40
 
         # D (4): cor por prioridade (override do bloco)
@@ -301,17 +319,38 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if st_color:
             status_cell.fill = PatternFill("solid", fgColor=st_color)
 
+        # AA (27): Semana - destaque visual para semana atual
+        semana_cell = ws.cell(row=row_idx, column=27)
+        if issue.get("_semana") == "Atual":
+            semana_cell.fill = PatternFill("solid", fgColor="C6EFCE")  # verde claro
+            semana_cell.font = Font(bold=True, size=9, color="006100")
+        else:
+            semana_cell.fill = PatternFill("solid", fgColor="FFEB9C")  # amarelo claro
+            semana_cell.font = Font(size=9, color="9C6500")
+        
+        # J (10): Qtd Vínculos - destaque para issues com muitos vínculos
+        vinc_cell = ws.cell(row=row_idx, column=10)
+        qtd_vinc = issue.get("qtd_vinculos", 0)
+        if qtd_vinc >= 5:
+            vinc_cell.fill = PatternFill("solid", fgColor="FFC7CE")  # vermelho claro
+            vinc_cell.font = Font(bold=True, size=9, color="9C0006")
+        elif qtd_vinc >= 3:
+            vinc_cell.fill = PatternFill("solid", fgColor="FFEB9C")  # amarelo
+            vinc_cell.font = Font(bold=True, size=9, color="9C6500")
+
     n_rows   = len(issues)
     last_row = max(1 + n_rows, 2)
     last_col = len(DADOS_COLS)
     sfx      = last_row + 50
 
-    dv_ajuste.sqref    = "M2:M{sfx}".format(sfx=sfx)
-    dv_possui_ta.sqref = "N2:N{sfx}".format(sfx=sfx)
-    dv_prob_res.sqref  = "O2:O{sfx}".format(sfx=sfx)
-    dv_analisado.sqref = "S2:S{sfx}".format(sfx=sfx)
+    dv_ajuste.sqref         = "Q2:Q{sfx}".format(sfx=sfx)
+    dv_possui_ta.sqref      = "R2:R{sfx}".format(sfx=sfx)
+    dv_resultado_auto.sqref = "S2:S{sfx}".format(sfx=sfx)
+    dv_prob_res.sqref       = "U2:U{sfx}".format(sfx=sfx)
+    dv_analisado.sqref      = "Z2:Z{sfx}".format(sfx=sfx)
     ws.add_data_validation(dv_ajuste)
     ws.add_data_validation(dv_possui_ta)
+    ws.add_data_validation(dv_resultado_auto)
     ws.add_data_validation(dv_prob_res)
     ws.add_data_validation(dv_analisado)
 
@@ -324,19 +363,21 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
 # =============================================================================
 
 ACOMP_COLS = [
-    ("A", "Item",           45),
-    ("B", "Responsável",    22),
-    ("C", "Área",            22),
-    ("D", "Ação",           45),
-    ("E", "Status da Ação", 18),
-    ("F", "Data Conclusão", 14),
-    ("G", "Observação",     40),
+    ("A", "Issue Acompanhamento", 18),
+    ("B", "Issue Original",       16),
+    ("C", "Item",                 45),
+    ("D", "Responsável",          22),
+    ("E", "Área",                  22),
+    ("F", "Ação",                 45),
+    ("G", "Status da Ação",       18),
+    ("H", "Data Conclusão",       14),
+    ("I", "Observação",           40),
 ]
 
 
 def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_manual: dict):
     ws.title = "🗂️ Acompanhamento Issue"
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "B2"
     ws.row_dimensions[1].height = 32
 
     headers = [col[1] for col in ACOMP_COLS]
@@ -357,8 +398,8 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
     )
     ws.add_data_validation(dv_area)
 
-    # Lookup D–H preservados por Key Issue (dados manuais entre gerações)
-    preserved_by_key: dict = {r.get("key", ""): r for r in preserved_acomp if r.get("key")}
+    # Lookup preservado por Issue de Acompanhamento (dados manuais entre gerações)
+    preserved_by_acomp: dict = {r.get("issue_acomp", ""): r for r in preserved_acomp if r.get("issue_acomp")}
 
     colors_acomp = {
         "Concluído": STATUS_RESOLVIDO,
@@ -367,13 +408,24 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
         "Bloqueado": STATUS_ABERTO,
     }
 
-    # Uma linha por issue — apenas col A tem fórmula (espelha Dados!O ao vivo)
+    # Filtra apenas issues que têm Issue de Acompanhamento preenchida (col Y)
+    row_idx = 2
     for idx, issue in enumerate(issues):
-        row_idx   = idx + 2
         dados_row = idx + 2
         key       = issue.get("key", "")
-        acomp_data = preserved_by_key.get(key, {})
-        # Fallback para campos de acompanhamento embutidos na issue (modo demo/mock)
+        link      = issue.get("link_jira", "")
+        
+        # Pega Issue de Acompanhamento da coluna Y (preservada ou mock)
+        manual = preserved_manual.get(key, {})
+        issue_acomp = manual.get("issue_acompanhamento", "") or issue.get("issue_acompanhamento", "")
+        
+        # Pula se não tem Issue de Acompanhamento
+        if not issue_acomp or not str(issue_acomp).strip():
+            continue
+        
+        issue_acomp = str(issue_acomp).strip()
+        acomp_data = preserved_by_acomp.get(issue_acomp, {})
+        # Fallback para campos mock
         if not acomp_data:
             acomp_data = {
                 "responsavel":    issue.get("acomp_responsavel", ""),
@@ -386,57 +438,76 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
 
         ws.row_dimensions[row_idx].height = 20
 
-        # A: única coluna automática — espelha Dados!O; vazio se O estiver vazio
-        cell_a = ws.cell(row=row_idx, column=1)
-        sheet = "\U0001f4ca Dados"
-        cell_a.value = f"=IF('{sheet}'!P{dados_row}=\"\",\"\",'{sheet}'!P{dados_row})"
-        cell_a.border    = _make_thin_border()
-        cell_a.font      = Font(size=9, color="444444")
-        cell_a.alignment = Alignment(vertical="center", wrap_text=True)
-        cell_a.fill      = PatternFill("solid", fgColor="F2F2F2")
+        # A: Issue de Acompanhamento (Key principal desta aba)
+        cell_acomp = ws.cell(row=row_idx, column=1, value=issue_acomp)
+        cell_acomp.border    = _make_thin_border()
+        cell_acomp.font      = Font(size=9, color="0563C1", underline="single", bold=True)
+        cell_acomp.alignment = Alignment(vertical="center")
+        # TODO: adicionar hyperlink para issue acompanhamento se houver
 
-        # B–G: dados manuais (preservados entre gerações)
+        # B: Issue Original (hyperlink)
+        cell_orig = ws.cell(row=row_idx, column=2, value=key)
+        cell_orig.border    = _make_thin_border()
+        cell_orig.font      = Font(size=9, color="0563C1", underline="single")
+        cell_orig.alignment = Alignment(vertical="center")
+        if link:
+            cell_orig.hyperlink = link
+
+        # C: Fórmula — espelha Dados!V da linha correspondente
+        cell_item = ws.cell(row=row_idx, column=3)
+        sheet = "\U0001f4ca Dados"
+        cell_item.value = f"=IF('{sheet}'!V{dados_row}=\"\",\"\",'{sheet}'!V{dados_row})"
+        cell_item.border    = _make_thin_border()
+        cell_item.font      = Font(size=9, color="444444")
+        cell_item.alignment = Alignment(vertical="center", wrap_text=True)
+        cell_item.fill      = PatternFill("solid", fgColor="F2F2F2")
+
+        # D–I: dados manuais (preservados entre gerações)
         status_val = acomp_data.get("status_acao", "")
         vals_manual = [
-            acomp_data.get("responsavel", ""),           # B
-            acomp_data.get("area", ""),                  # C
-            acomp_data.get("acao", ""),                  # D
-            status_val,                                   # E
+            acomp_data.get("responsavel", ""),           # D
+            acomp_data.get("area", ""),                  # E
+            acomp_data.get("acao", ""),                  # F
+            status_val,                                   # G
             (_to_excel_date(acomp_data["data_conclusao"])
-             if acomp_data.get("data_conclusao") else None),  # F
-            acomp_data.get("observacao", ""),            # G
+             if acomp_data.get("data_conclusao") else None),  # H
+            acomp_data.get("observacao", ""),            # I
         ]
-        for ci, val in enumerate(vals_manual, start=2):
+        for ci, val in enumerate(vals_manual, start=4):
             cell           = ws.cell(row=row_idx, column=ci, value=val)
             cell.border    = _make_thin_border()
             cell.font      = Font(size=9)
-            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 7))
+            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 9))
 
-        # Data Conclusão (F=6) — formato de data
-        dcf = ws.cell(row=row_idx, column=6)
+        # Data Conclusão (H=8) — formato de data
+        dcf = ws.cell(row=row_idx, column=8)
         if dcf.value:
             dcf.number_format = "DD/MM/YYYY"
 
-        # Cor por Status (E=5)
+        # Cor por Status (G=7)
         sc = colors_acomp.get(status_val)
         if sc:
-            ws.cell(row=row_idx, column=5).fill = PatternFill("solid", fgColor=sc)
+            ws.cell(row=row_idx, column=7).fill = PatternFill("solid", fgColor=sc)
+        
+        row_idx += 1
 
-    n_rows   = len(issues)
-    last_row = max(1 + n_rows, 2)
+    n_rows   = row_idx - 2
+    last_row = max(row_idx - 1, 2)
     last_col = len(ACOMP_COLS)
 
-    dv_status.sqref = f"E2:E{last_row + 50}"
-    dv_area.sqref   = f"C2:C{last_row + 50}"
+    dv_status.sqref = f"G2:G{last_row + 50}"
+    dv_area.sqref   = f"E2:E{last_row + 50}"
 
     if n_rows > 0:
         _add_table(ws, "TabelaAcompanhamento",
                    f"A1:{get_column_letter(last_col)}{last_row}", "TableStyleMedium7")
 
-    for extra in range(n_rows + 2, n_rows + 12):
+    for extra in range(last_row + 1, last_row + 12):
         ws.row_dimensions[extra].height = 20
         for col in range(1, last_col + 1):
             ws.cell(row=extra, column=col).border = _make_thin_border()
+    
+    return n_rows  # Retorna número de linhas geradas
 
 
 # =============================================================================
@@ -525,18 +596,26 @@ def _read_existing_manual_data(filepath: str) -> dict:
             # índices 0-based
             col_key       = header.index("Key")            if "Key"                    in header else 0
             col_analisado = header.index("Analisado")      if "Analisado"              in header else None
+            col_causa_raiz = header.index("Causa Raiz")         if "Causa Raiz"              in header else None
             col_analise   = header.index("Análise da Causa")    if "Análise da Causa"    in header else None
             col_ajuste    = header.index("Tipo de Ajuste")        if "Tipo de Ajuste"        in header else None
             col_ta        = header.index("Possui TA")              if "Possui TA"              in header else None
+            col_resultado_auto = header.index("Resultado da Automação") if "Resultado da Automação" in header else None
+            col_contexto  = header.index("Contexto")               if "Contexto"                in header else None
             col_prob      = header.index("Problema Resolvido?")    if "Problema Resolvido?"    in header else None
             col_item      = header.index("Item p/ Resolução Def.") if "Item p/ Resolução Def." in header else None
+            col_issue_acomp = header.index("Issue de Acompanhamento") if "Issue de Acompanhamento" in header else None
 
             manual_indices = {
+                "causa_raiz":         col_causa_raiz,
                 "analise_causa":      col_analise,
                 "ajuste_realizado":   col_ajuste,
                 "possui_ta":          col_ta,
+                "resultado_automacao": col_resultado_auto,
+                "contexto":           col_contexto,
                 "problema_resolvido": col_prob,
                 "item_resolucao_def": col_item,
+                "issue_acompanhamento": col_issue_acomp,
                 "analisado":          col_analisado,
             }
 
@@ -568,28 +647,29 @@ def _read_existing_manual_data(filepath: str) -> dict:
                     result["dados_analisados"][key] = full_row
 
         # ── Aba Acompanhamento Issue ──────────────────────────────────────────
-        # Col A é fórmula (auto-populada de Dados!O). B e C são valores estáticos.
-        # Preservamos apenas D–H (dados manuais), identificados pela Key em B.
+        # Col A = Issue Acompanhamento (key desta aba)
+        # Col B = Issue Original, Col C = fórmula
+        # Preservamos D–I (dados manuais), identificados pela Issue Acomp em A
         acomp_sheet = "🗂️ Acompanhamento Issue"
         if acomp_sheet in wb.sheetnames:
             ws = wb[acomp_sheet]
             rows = list(ws.iter_rows(min_row=2, values_only=True))
             for row in rows:
-                # B (índice 1) contém o Key — valor estático
-                key_val = row[1] if len(row) > 1 else None
-                if not key_val:
+                # A (índice 0) contém a Issue de Acompanhamento
+                issue_acomp = row[0] if len(row) > 0 else None
+                if not issue_acomp:
                     continue
-                key_str = str(key_val).strip()
-                if not key_str or key_str.startswith("="):
+                issue_acomp_str = str(issue_acomp).strip()
+                if not issue_acomp_str or issue_acomp_str.startswith("="):
                     continue
                 result["acompanhamento"].append({
-                    "key":            key_str,
+                    "issue_acomp":    issue_acomp_str,
                     "responsavel":    row[3] or "" if len(row) > 3 else "",
-                    "area":           row[2] or "" if len(row) > 2 else "",
-                    "acao":           row[3] or "" if len(row) > 3 else "",
-                    "status_acao":    row[4] or "" if len(row) > 4 else "",
-                    "data_conclusao": row[5] or None if len(row) > 5 else None,
-                    "observacao":     row[6] or "" if len(row) > 6 else "",
+                    "area":           row[4] or "" if len(row) > 4 else "",
+                    "acao":           row[5] or "" if len(row) > 5 else "",
+                    "status_acao":    row[6] or "" if len(row) > 6 else "",
+                    "data_conclusao": row[7] or None if len(row) > 7 else None,
+                    "observacao":     row[8] or "" if len(row) > 8 else "",
                 })
 
         wb.close()
@@ -597,6 +677,72 @@ def _read_existing_manual_data(filepath: str) -> dict:
         print(f"[WARN] Não foi possível ler dados existentes: {e}")
 
     return result
+
+
+# =============================================================================
+# FUNÇÃO PRINCIPAL
+# =============================================================================
+
+def _sort_issues_by_priority(issues: list) -> list:
+    """
+    Ordena issues por:
+    1. Maior quantidade de vínculos (qtd_vinculos) - descendente
+    2. Prioridade Crítica (P0) primeiro
+    3. Prioridade Alta (P1) segundo
+    4. Demais prioridades
+    5. Dentro de cada grupo: mais recente primeiro (data_importacao)
+    
+    Retorna nova lista ordenada.
+    """
+    def _sort_key(issue):
+        qtd_vinculos = issue.get("qtd_vinculos", 0)
+        prioridade = issue.get("prioridade", "")
+        data_imp = issue.get("data_importacao") or datetime(2000, 1, 1)
+        
+        # Peso da prioridade: Crítica=0 (maior prioridade), Alta=1, demais=2
+        if prioridade == "Crítica":
+            peso_prio = 0
+        elif prioridade == "Alta":
+            peso_prio = 1
+        else:
+            peso_prio = 2
+        
+        # Ordena: vínculos DESC, peso_prio ASC, data DESC
+        # Para ordenar vínculos DESC, usamos negativo
+        return (-qtd_vinculos, peso_prio, -data_imp.timestamp())
+    
+    return sorted(issues, key=_sort_key)
+
+
+def _apply_weekly_stacking(issues: list, preserved_data: dict) -> list:
+    """
+    Empilhamento semanal: issues mais recentes (importadas esta semana) vão para o topo.
+    Issues antigas vão descendo.
+    
+    Critério: compara data_importacao de cada issue com a semana atual.
+    """
+    hoje = datetime.now()
+    inicio_semana = hoje - timedelta(days=hoje.weekday())  # Segunda-feira desta semana
+    inicio_semana = inicio_semana.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    issues_semana_atual = []
+    issues_antigas = []
+    
+    for issue in issues:
+        data_imp = issue.get("data_importacao")
+        if data_imp and data_imp >= inicio_semana:
+            issues_semana_atual.append(issue)
+        else:
+            issues_antigas.append(issue)
+    
+    # Adiciona marcador de semana em cada issue
+    for issue in issues_semana_atual:
+        issue["_semana"] = "Atual"
+    for issue in issues_antigas:
+        issue["_semana"] = "Anterior"
+    
+    # Issues da semana atual no topo, antigas embaixo
+    return issues_semana_atual + issues_antigas
 
 
 # =============================================================================
@@ -637,6 +783,14 @@ def generate_excel(config: dict, output_path: str = None):
         n_acomp  = len(preserved["acompanhamento"])
         print(f"   ↳ {n_frozen} linhas congeladas (Analisado=Sim) | "
               f"{n_acomp} itens de acompanhamento preservados")
+    
+    # 2.5. Ordenação e empilhamento semanal
+    print(f"🔀 Ordenando issues (vínculos > P0 > P1) e aplicando empilhamento semanal...")
+    issues = _sort_issues_by_priority(issues)
+    issues = _apply_weekly_stacking(issues, preserved)
+    
+    semana_atual = sum(1 for i in issues if i.get("_semana") == "Atual")
+    print(f"   ↳ {semana_atual} issues desta semana | {len(issues) - semana_atual} anteriores")
 
     # Tipos de erro disponíveis (para dropdown)
     tipos_erro = list(config.get("tipos_erro", {}).keys())
@@ -655,7 +809,7 @@ def generate_excel(config: dict, output_path: str = None):
     _build_dados(ws_dados, issues, tipos_erro, preserved)
 
     print("🗂️  Construindo aba Acompanhamento Issue...")
-    _build_acompanhamento(ws_acomp, issues, preserved["acompanhamento"], preserved["dados_manual_cols"])
+    n_acomp_gerados = _build_acompanhamento(ws_acomp, issues, preserved["acompanhamento"], preserved["dados_manual_cols"])
 
     print("👥 Construindo aba Responsáveis...")
     _build_responsaveis(ws_resp, config.get("times", {}))
@@ -666,10 +820,9 @@ def generate_excel(config: dict, output_path: str = None):
 
     # 5. Salvar
     wb.save(str(output_path))
-    n_acomp_final = len(preserved["acompanhamento"])
     print(f"\n✅ Excel gerado: {output_path.resolve()}")
     print(f"   Abas: {' | '.join(wb.sheetnames)}")
-    print(f"   Issues: {len(issues)} | Acompanhamento: {n_acomp_final} itens")
+    print(f"   Issues: {len(issues)} | Acompanhamento: {n_acomp_gerados} itens")
     print(f"{'='*60}\n")
 
     return str(output_path.resolve())

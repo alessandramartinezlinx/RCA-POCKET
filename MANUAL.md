@@ -1,7 +1,29 @@
 # 📘 RCA Pocket — Manual do Usuário
 
-> **Versão:** 1.0 · **Atualizado:** Março/2026  
+> **Versão:** 1.1 · **Atualizado:** Março/2026  
 > Ferramenta interna do time de QA para gestão e análise de Root Cause Analysis (RCA).
+
+---
+
+## 🆕 Novidades da Versão 1.1
+
+### Ordenação Inteligente e Empilhamento Semanal
+
+As issues agora são **automaticamente ordenadas** seguindo critérios de negócio:
+
+1. **Qtd Vínculos** (↓) — Issues com mais relacionamentos têm prioridade
+2. **P0 (Crítica)** — Bugs críticos aparecem primeiro
+3. **P1 (Alta)** — Bugs de alta prioridade em seguida
+4. **Demais prioridades**
+5. **Data importação** (↓) — Mais recentes primeiro dentro de cada grupo
+
+**Empilhamento Semanal:** Issues da semana atual ficam no topo; antigas descem automaticamente.
+
+**Novas colunas:**
+- **H - Qtd Vínculos**: Quantidade de issues linkadas no Jira (com destaque visual)
+- **V - Semana**: Indica se é "Atual" ou "Anterior" (com cores diferentes)
+
+📄 Detalhes completos em [`FUNCIONALIDADE_ORDENACAO.md`](FUNCIONALIDADE_ORDENACAO.md)
 
 ---
 

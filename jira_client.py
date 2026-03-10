@@ -51,6 +51,7 @@ MOCK_ISSUES = [
             "description": "ORA-01555 ao importar XML de NF-e. Undo retention insuficiente no banco.",
             "resolution": {"name": "Resolvido"},
             "comment": {"comments": [{"body": "Aumentado undo_retention para 7200 no banco (undo_retention=7200). Deploy aplicado em produção após janela de manutenção."}]},
+            "issuelinks": [{"id": "1"}, {"id": "2"}, {"id": "3"}],  # 3 vínculos
         },
     },
     {
@@ -64,6 +65,7 @@ MOCK_ISSUES = [
             "labels": ["Entrada XML", "Suprimentos"],
             "description": "Consulta ao SEFAZ ultrapassa timeout configurado (30s). Integração externa instável.",
             "resolution": {"name": "Resolvido"},
+            "issuelinks": [{"id": "1"}],  # 1 vínculo
         },
     },
     {
@@ -78,6 +80,7 @@ MOCK_ISSUES = [
             "description": "Certificado A1 da empresa expirou. Sistema falha silenciosamente sem mensagem clara.",
             "resolution": {"name": "Resolvido"},
             "comment": {"comments": [{"body": "Certificado A1 renovado (validade 3 anos). Implementado alerta automático 30 dias antes do vencimento via job agendado."}]},
+            "issuelinks": [{"id": "1"}, {"id": "2"}, {"id": "3"}, {"id": "4"}, {"id": "5"}],  # 5 vínculos (P0 com muitos links)
         },
     },
     {
@@ -91,6 +94,7 @@ MOCK_ISSUES = [
             "labels": ["Entrada XML", "Suprimentos"],
             "description": "Quando fornecedor envia XML com schema divergente, sistema retorna error 500 sem detalhar.",
             "resolution": None,
+            "issuelinks": [],  # 0 vínculos
         },
     },
     {
@@ -104,6 +108,7 @@ MOCK_ISSUES = [
             "labels": ["Entrada XML", "Suprimentos"],
             "description": "Duplicate key constraint SQL ao reimportar XML. Falta validação de idempotência.",
             "resolution": {"name": "Resolvido"},
+            "issuelinks": [{}, {}],  # 2 vínculos
         },
     },
     {
@@ -182,6 +187,7 @@ MOCK_ISSUES = [
             "labels": ["Entrada XML", "Suprimentos"],
             "description": "Pool de threads não libera workers após processamento. JVM heap cresce progressivamente. OutOfMemory iminente.",
             "resolution": None,
+            "issuelinks": [{}, {}, {}, {}, {}, {}],  # 6 vínculos (P0 com muitos links - deve ficar no topo)
         },
     },
     # ── BALANÇO ──────────────────────────────────────────────────────────────
@@ -790,6 +796,10 @@ def normalize_issue(issue: dict, config: dict) -> dict:
 
     data_criacao = _parse_date(fields.get("created"))
     data_resolucao = _parse_date(fields.get("resolutiondate"))
+    
+    # Contagem de vínculos (issuelinks)
+    issuelinks = fields.get("issuelinks", [])
+    qtd_vinculos = len(issuelinks) if issuelinks else 0
 
     tempo_resolucao_dias = None
     if data_criacao and data_resolucao:
@@ -838,7 +848,11 @@ def normalize_issue(issue: dict, config: dict) -> dict:
         "qa_secundario":         area_map["qa_secundario"],
         "dev_principal":         area_map["dev_principal"],
         "dev_secundario":        area_map["dev_secundario"],
+        "dev_responsavel_bug":   "",  # TODO: extrair do Jira (campo custom ou worklog)
+        "qa_responsavel_bug":    "",  # TODO: extrair do Jira (campo custom ou worklog)
         "link_jira":             f"{config['jira']['base_url']}/browse/{issue_key}",
+        "qtd_vinculos":          qtd_vinculos,  # Quantidade de issuelinks
+        "data_importacao":       datetime.now(),  # Data de importação
         # Campos manuais demo (preenchidos via _MOCK_MANUAL; em produção vêm do Excel)
         "analise_causa":         manual_mock.get("analise_causa", ""),
         "ajuste_realizado":      manual_mock.get("ajuste_realizado", ""),

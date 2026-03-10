@@ -198,3 +198,169 @@ times:
         qa_secundario: Jenifer Lopes
         dev_principal: Rafael Flecha
         dev_secundario: Mauricio Maia
+
+  FFC:
+    areas:
+      - nome: Conciliadores
+        labels_jira:
+          - Conciliadores
+          - conciliadores
+        qa_principal: Fabio Elias
+        qa_secundario: ""
+        dev_principal: Michelle Pereira
+        dev_secundario: ""
+      - nome: Gestão Financeira
+        labels_jira:
+          - Gestão Financeira
+          - gestao-financeira
+          - Gestao Financeira
+        qa_principal: Fabio Elias
+        qa_secundario: ""
+        dev_principal: Michelle Pereira
+        dev_secundario: ""
+      - nome: NF-e
+        labels_jira:
+          - NF-e
+          - NFe
+          - nfe
+        qa_principal: Jean Carlos
+        qa_secundario: ""
+        dev_principal: Flavia Doge
+        dev_secundario: ""
+      - nome: Rejeições
+        labels_jira:
+          - Rejeições
+          - Rejeicoes
+          - rejeicoes
+        qa_principal: Jean Carlos
+        qa_secundario: ""
+        dev_principal: Flavia Doge
+        dev_secundario: ""
+      - nome: Conferencia de Caixa
+        labels_jira:
+          - Conferencia de Caixa
+          - conferencia-caixa
+        qa_principal: Jean Carlos
+        qa_secundario: ""
+        dev_principal: Flavia Doge
+        dev_secundario: ""
+
+  FatInt:
+    areas:
+      - nome: POS
+        labels_jira:
+          - POS
+          - pos
+        qa_principal: Vicente
+        qa_secundario: Daiane
+        dev_principal: Luis
+        dev_secundario: ""
+      - nome: Venda Fácil
+        labels_jira:
+          - Venda Fácil
+          - Venda Facil
+          - venda-facil
+        qa_principal: Daiane
+        qa_secundario: Vicente
+        dev_principal: Gisele
+        dev_secundario: ""
+      - nome: Trocas
+        labels_jira:
+          - Trocas
+          - trocas
+        qa_principal: Maica
+        qa_secundario: Daiane
+        dev_principal: Luis
+        dev_secundario: Raul
+      - nome: Ótico
+        labels_jira:
+          - Ótico
+          - Otico
+          - otico
+        qa_principal: Daiane
+        qa_secundario: Maica
+        dev_principal: Gisele
+        dev_secundario: Letícia
+      - nome: B2C
+        labels_jira:
+          - B2C
+          - b2c
+        qa_principal: Vicente
+        qa_secundario: ""
+        dev_principal: Amanda
+        dev_secundario: Luis
+      - nome: Importadores
+        labels_jira:
+          - Importadores
+          - importadores
+        qa_principal: Vicente
+        qa_secundario: Daiane
+        dev_principal: Marcus
+        dev_secundario: ""
+      - nome: Gerador de Relatórios
+        labels_jira:
+          - Gerador de Relatórios
+          - Gerador de Relatorios
+          - gerador-relatorios
+        qa_principal: Vicente
+        qa_secundario: Maica
+        dev_principal: Letícia
+        dev_secundario: ""
+      - nome: Serviços e Painel NFse
+        labels_jira:
+          - Serviços e Painel NFse
+          - Servicos e Painel NFse
+          - servicos-nfse
+        qa_principal: Maica
+        qa_secundario: ""
+        dev_principal: Guilherme
+        dev_secundario: Marcus
+      - nome: SmartPOS
+        labels_jira:
+          - SmartPOS
+          - smartpos
+        qa_principal: Daiane
+        qa_secundario: Maica
+        dev_principal: Guilherme
+        dev_secundario: ""
+      - nome: Catalogo Digital
+        labels_jira:
+          - Catalogo Digital
+          - Catálogo Digital
+          - catalogo-digital
+        qa_principal: Vicente
+        qa_secundario: Daiane
+        dev_principal: Raul
+        dev_secundario: ""
+      - nome: Venda de Seguros
+        labels_jira:
+          - Venda de Seguros
+          - venda-seguros
+        qa_principal: Maica
+        qa_secundario: ""
+        dev_principal: Marcus
+        dev_secundario: ""
+      - nome: Reshop
+        labels_jira:
+          - Reshop
+          - reshop
+        qa_principal: Daiane
+        qa_secundario: Vicente
+        dev_principal: Letícia
+        dev_secundario: ""
+      - nome: Remessas e Retornos
+        labels_jira:
+          - Remessas e Retornos
+          - remessas-retornos
+        qa_principal: Daiane
+        qa_secundario: ""
+        dev_principal: Otávio
+        dev_secundario: ""
+      - nome: TEF
+        labels_jira:
+          - TEF
+          - tef
+        qa_principal: Maica
+        qa_secundario: Vicente
+        dev_principal: Otávio
+        dev_secundario: ""
