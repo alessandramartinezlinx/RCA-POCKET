@@ -14,6 +14,16 @@ jira:
   token: "SEU_TOKEN_AQUI"
   auth_type: "pat"
   filter_id: "62693"
+  # Nome do campo customizado do SLA (opcional)
+  # Se não especificado, o sistema tentará detectar automaticamente
+  # Para descobrir o nome: abra uma issue no Jira, inspecione o JSON da API
+  # Exemplo: "customfield_10000" ou deixe comentado para busca automática
+  # sla_field_name: "customfield_10000"
+  # Nome do campo customizado "Número do Caso" (opcional)
+  # Usado para contar vínculos a partir de links no campo
+  # Se não especificado, o sistema tentará detectar automaticamente
+  # Exemplo: "customfield_10001" ou deixe comentado para busca automática
+  # numero_caso_field: "customfield_10001"
   # Campos mínimos para reduzir payload na API (economiza recursos do DC)
   fields:
     - summary
@@ -27,6 +37,8 @@ jira:
     - resolution
     - resolutiondate
     - comment        # últimos comentários — usado para preencher "Ação Realizada no Bug"
+    # Adicione aqui o campo SLA se souber o nome exato (ex: customfield_10000)
+    # Caso contrário, use "*all" para buscar todos os campos (mais lento)
   max_results_per_page: 100
 
 cache:

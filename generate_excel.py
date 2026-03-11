@@ -671,12 +671,26 @@ def _read_existing_manual_data(filepath: str) -> dict:
 
 def _sort_issues_by_priority(issues: list) -> list:
     """
-    Ordena issues por:
-    1. Maior quantidade de vínculos (qtd_vinculos) - descendente
-    2. Prioridade Crítica (P0) primeiro
-    3. Prioridade Alta (P1) segundo
-    4. Demais prioridades
-    5. Dentro de cada grupo: mais recente primeiro (data_importacao)
+    Ordena issues seguindo a regra de priorização CRÍTICA:
+    
+    🔴 PRIORIDADE ABSOLUTA: Quantidade de Vínculos
+       Issues com MAIS vínculos sempre ficam no topo, independente da prioridade.
+    
+    🟠 SEGUNDA PRIORIDADE: Criticidade (P0 > P1 > outras)
+       Dentro de issues com mesma quantidade de vínculos:
+       - Crítica (P0) vem primeiro
+       - Alta (P1) vem segundo
+       - Demais prioridades vêm por último
+    
+    🟡 DESEMPATE: Data de importação (mais recente primeiro)
+       Dentro do mesmo grupo (vínculos + prioridade), ordena por data recente.
+    
+    Exemplo de ordenação resultante:
+      1. Issue com 10 vínculos + P1
+      2. Issue com 5 vínculos + P0
+      3. Issue com 5 vínculos + P1
+      4. Issue com 0 vínculos + P0
+      5. Issue com 0 vínculos + P1
     
     Retorna nova lista ordenada.
     """
@@ -693,8 +707,10 @@ def _sort_issues_by_priority(issues: list) -> list:
         else:
             peso_prio = 2
         
-        # Ordena: vínculos DESC, peso_prio ASC, data DESC
-        # Para ordenar vínculos DESC, usamos negativo
+        # ORDEM CRÍTICA: vínculos DESC (negativo), depois prioridade ASC, depois data DESC
+        # Vínculos com valor negativo garante que 10 vínculos > 5 vínculos > 0 vínculos
+        # Peso de prioridade garante que P0 (0) > P1 (1) > outras (2)
+        # Data negativa garante que mais recente > mais antiga
         return (-qtd_vinculos, peso_prio, -data_imp.timestamp())
     
     return sorted(issues, key=_sort_key)

@@ -779,56 +779,480 @@ def map_issue_to_area(labels: list, times_config: dict) -> dict:
     return result
 
 
+def _extract_sintoma(description: str) -> str:
+    """
+    Extrai o texto após 'Sintoma:' da descrição do Jira.
+    Retorna o texto até a próxima linha vazia ou próximo campo (ex: 'Impacto:', 'Causa:', etc.).
+    Se não encontrar, retorna string vazia.
+    """
+    if not description:
+        return ""
+    
+    # Procura por "Sintoma:" (case insensitive)
+    # Para quando encontrar: dupla quebra de linha OU início de outro campo (palavra com : )
+    import re
+    match = re.search(r'Sintoma\s*:\s*(.+?)(?:\n\s*\n|\n\s*[*_]*[A-ZÀ-Ú][a-zà-úç]+\s*[*_]*\s*:|$)', 
+                      description, 
+                      re.IGNORECASE | re.DOTALL)
+    
+    if match:
+        sintoma = match.group(1).strip()
+        # Remove formatação Markdown/Wiki se houver (* _ [ ])
+        sintoma = re.sub(r'[\*_\[\]]', '', sintoma)
+        # Remove quebras de linha extras
+        sintoma = ' '.join(sintoma.split())
+        # Limita a 200 caracteres para não poluir a planilha
+        if len(sintoma) > 200:
+            sintoma = sintoma[:197] + "..."
+        return sintoma
+    
+    return ""
+
+
+def _find_conclusao_comment(comments_list: list) -> str:
+    """
+    Procura nos comentários por aquele que contém '1 - Conclusão:'.
+    Retorna o corpo completo do comentário de conclusão, ou string vazia se não encontrar.
+    """
+    if not comments_list:
+        return ""
+    
+    import re
+    for comment in comments_list:
+        body = str(comment.get("body") or "").strip()
+        # Procura por "1 - Conclusão:" (aceita variações: 1- Conclusão, 1 -Conclusão, etc.)
+        if re.search(r'1\s*-\s*Conclus[aã]o\s*:', body, re.IGNORECASE):
+            return body
+    
+    return ""
+
+
+def _extract_causa_raiz(description: str) -> str:
+    """
+    Extrai a Causa Raiz da descrição do Jira.
+    Busca o texto que vem logo após "Sintoma:" ou "Situação:".
+    Retorna o texto até a próxima linha vazia ou próximo campo.
+    """
+    if not description:
+        return ""
+    
+    import re
+    # Padrões: procura por "Sintoma:" ou "Situação:" e pega o texto que vem depois
+    # Para quando encontrar: dupla quebra de linha OU início de outro campo
+    patterns = [
+        r'Sintoma\s*:\s*(.+?)(?:\n\s*\n|\n\s*[*_]*[A-ZÀ-Ú][\w\s]+\s*[*_]*\s*:|$)',
+        r'Situa[çc][aã]o\s*:\s*(.+?)(?:\n\s*\n|\n\s*[*_]*[A-ZÀ-Ú][\w\s]+\s*[*_]*\s*:|$)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE | re.DOTALL)
+        if match:
+            causa = match.group(1).strip()
+            # Remove formatação markdown/wiki
+            causa = re.sub(r'[\*_\[\]]', '', causa)
+            # Remove quebras de linha extras
+            causa = ' '.join(causa.split())
+            # Limita tamanho
+            if len(causa) > 300:
+                causa = causa[:297] + "..."
+            return causa
+    
+    return ""
+
+
+def _extract_acao_realizada(comments_list: list, resolution_name: str = "") -> str:
+    """
+    Extrai a Ação Realizada dos comentários do Jira.
+    Busca por "Solução:" nos comentários e verifica se houve alteração no código fonte.
+    Se não encontrar, busca em "1 - Conclusão:" ou retorna resolution_name.
+    """
+    if not comments_list:
+        return resolution_name
+    
+    import re
+    
+    # Primeiro tenta encontrar "Solução:" em qualquer comentário
+    solucao_text = ""
+    houve_alteracao_codigo = False
+    
+    for comment in comments_list:
+        body = str(comment.get("body") or "").strip()
+        
+        # Procura por "Solução:"
+        match_solucao = re.search(r'Solu[çc][aã]o\s*:\s*([^\n]+)', body, re.IGNORECASE)
+        if match_solucao and not solucao_text:
+            solucao_text = match_solucao.group(1).strip()
+        
+        # Verifica se menciona alteração de código
+        if re.search(r'altera[çc][aã]o\s+(no\s+)?c[óo]digo|modifica[çc][aã]o\s+(no\s+)?c[óo]digo|'
+                     r'ajuste\s+(no\s+)?c[óo]digo|corre[çc][aã]o\s+(no\s+)?c[óo]digo|'
+                     r'altera[çc][aã]o\s+(de\s+)?fonte|corre[çc][aã]o\s+(de\s+)?c[óo]digo|'
+                     r'code\s+change|source\s+code', body, re.IGNORECASE):
+            houve_alteracao_codigo = True
+    
+    # Se encontrou solução, usa ela
+    if solucao_text:
+        acao = solucao_text
+        # Remove formatação
+        acao = re.sub(r'[\*_\[\]]', '', acao)
+        # Remove quebras de linha extras
+        acao = ' '.join(acao.split())
+        
+        # Adiciona indicação de alteração de código se detectado
+        if houve_alteracao_codigo:
+            if "alteração" not in acao.lower() and "código" not in acao.lower():
+                acao = f"[Alteração no código] {acao}"
+        
+        # Limita tamanho
+        if len(acao) > 400:
+            acao = acao[:397] + "..."
+        return acao
+    
+    # Se não encontrou "Solução:", tenta buscar em "1 - Conclusão:"
+    conclusao_comment = _find_conclusao_comment(comments_list)
+    if conclusao_comment:
+        # Padrões para identificar ação em conclusão
+        patterns = [
+            r'A[çc][aã]o\s+[Rr]ealizada\s*:\s*([^\n]+)',
+            r'A[çc][aã]o\s*:\s*([^\n]+)',
+            r'Corre[çc][aã]o\s*:\s*([^\n]+)',
+            r'Script\s*:\s*([^\n]+)',
+            r'Procedimento\s*:\s*([^\n]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, conclusao_comment, re.IGNORECASE)
+            if match:
+                acao = match.group(1).strip()
+                # Remove formatação
+                acao = re.sub(r'[\*_\[\]]', '', acao)
+                # Remove quebras de linha extras
+                acao = ' '.join(acao.split())
+                
+                # Adiciona indicação de alteração de código se detectado
+                if houve_alteracao_codigo:
+                    if "alteração" not in acao.lower() and "código" not in acao.lower():
+                        acao = f"[Alteração no código] {acao}"
+                
+                # Limita tamanho
+                if len(acao) > 400:
+                    acao = acao[:397] + "..."
+                # Limita tamanho
+                if len(acao) > 400:
+                    acao = acao[:397] + "..."
+                return acao
+        
+        # Se não encontrou campos específicos em conclusão, pega todo o texto
+        match = re.search(r'1\s*-\s*Conclus[aã]o\s*:\s*(.+)', conclusao_comment, re.IGNORECASE | re.DOTALL)
+        if match:
+            texto = match.group(1).strip()
+            # Remove formatação
+            texto = re.sub(r'[\*_\[\]]', '', texto)
+            # Remove quebras de linha extras
+            texto = ' '.join(texto.split())
+            
+            # Adiciona indicação de alteração de código se detectado
+            if houve_alteracao_codigo:
+                if "alteração" not in texto.lower() and "código" not in texto.lower():
+                    texto = f"[Alteração no código] {texto}"
+            
+            # Limita tamanho
+            if len(texto) > 400:
+                texto = texto[:397] + "..."
+            return texto
+    
+    # Fallback: usa resolution_name
+    if houve_alteracao_codigo and resolution_name:
+        return f"[Alteração no código] {resolution_name}"
+    
+    return resolution_name
+
+
+def _extract_dev_responsavel(description: str) -> str:
+    """
+    Extrai o nome do Responsável Desenvolvimento da descrição.
+    Procura por padrão "Responsável Desenvolvimento:" ou "Responsável Dev:" ou "Dev Responsável:".
+    """
+    if not description:
+        return ""
+    
+    import re
+    patterns = [
+        r'Respons[aá]vel\s+Desenvolvimento\s*:\s*([^\n]+)',
+        r'Respons[aá]vel\s+Dev\s*:\s*([^\n]+)',
+        r'Dev\s+Respons[aá]vel\s*:\s*([^\n]+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            nome = match.group(1).strip()
+            # Remove formatação markdown/wiki
+            nome = re.sub(r'[\*_\[\]]', '', nome)
+            # Remove quebras de linha extras
+            nome = ' '.join(nome.split())
+            # Limita tamanho (nome de pessoa geralmente é curto)
+            if len(nome) > 100:
+                nome = nome[:97] + "..."
+            return nome
+    
+    return ""
+
+
+def _extract_qa_responsavel(description: str) -> str:
+    """
+    Extrai o nome do Responsável QA da descrição.
+    Procura por padrão "Responsável QA:" ou "QA Responsável:" ou "Responsável Testes:".
+    """
+    if not description:
+        return ""
+    
+    import re
+    patterns = [
+        r'Respons[aá]vel\s+QA\s*:\s*([^\n]+)',
+        r'QA\s+Respons[aá]vel\s*:\s*([^\n]+)',
+        r'Respons[aá]vel\s+Testes\s*:\s*([^\n]+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            nome = match.group(1).strip()
+            # Remove formatação markdown/wiki
+            nome = re.sub(r'[\*_\[\]]', '', nome)
+            # Remove quebras de linha extras
+            nome = ' '.join(nome.split())
+            # Limita tamanho (nome de pessoa geralmente é curto)
+            if len(nome) > 100:
+                nome = nome[:97] + "..."
+            return nome
+    
+    return ""
+
+
+def _extract_sla_dates(fields: dict, sla_field_name: str = None):
+    """
+    Extrai datas do SLA Panel (Start Date e End Date).
+    
+    Args:
+        fields: Objeto fields da issue do Jira
+        sla_field_name: Nome do campo customizado do SLA (ex: "customfield_10000")
+                       Se None, tenta procurar automaticamente
+    
+    Returns:
+        Tupla (start_date, end_date) ou (None, None) se não encontrar
+    """
+    # Se foi especificado um campo SLA, tenta usar ele
+    if sla_field_name and sla_field_name in fields:
+        sla_data = fields.get(sla_field_name)
+        if sla_data:
+            # SLA pode ser um array ou objeto único
+            if isinstance(sla_data, list) and len(sla_data) > 0:
+                sla_obj = sla_data[0]  # Pega o primeiro SLA
+            else:
+                sla_obj = sla_data
+            
+            # Tenta extrair ongoingCycle (ciclo em andamento) ou completedCycles
+            if isinstance(sla_obj, dict):
+                # Procura por startTime/breachTime no ciclo em andamento
+                ongoing = sla_obj.get("ongoingCycle") or {}
+                start_time = ongoing.get("startTime") or ongoing.get("goalDuration", {}).get("startTime")
+                end_time = ongoing.get("breachTime") or ongoing.get("endTime")
+                
+                if start_time or end_time:
+                    return (start_time, end_time)
+                
+                # Se não tem ciclo em andamento, procura nos completados
+                completed = sla_obj.get("completedCycles") or []
+                if completed and isinstance(completed, list) and len(completed) > 0:
+                    last_cycle = completed[-1]  # Pega o último ciclo completado
+                    start_time = last_cycle.get("startTime")
+                    end_time = last_cycle.get("stopTime") or last_cycle.get("endTime")
+                    if start_time or end_time:
+                        return (start_time, end_time)
+    
+    # Busca automática: procura por campos que parecem ser SLA
+    # Campos customizados no Jira geralmente têm formato "customfield_XXXXX"
+    for field_key, field_value in fields.items():
+        if field_key.startswith("customfield_") and field_value:
+            # Verifica se o campo tem estrutura de SLA
+            if isinstance(field_value, dict):
+                if "ongoingCycle" in field_value or "completedCycles" in field_value:
+                    # Encontrou campo SLA, tenta extrair datas
+                    ongoing = field_value.get("ongoingCycle") or {}
+                    start_time = ongoing.get("startTime")
+                    end_time = ongoing.get("breachTime") or ongoing.get("endTime")
+                    
+                    if start_time or end_time:
+                        return (start_time, end_time)
+                    
+                    completed = field_value.get("completedCycles") or []
+                    if completed and isinstance(completed, list) and len(completed) > 0:
+                        last_cycle = completed[-1]
+                        start_time = last_cycle.get("startTime")
+                        end_time = last_cycle.get("stopTime") or last_cycle.get("endTime")
+                        if start_time or end_time:
+                            return (start_time, end_time)
+    
+    # Não encontrou SLA
+    return (None, None)
+
+
+def _extract_numero_caso_count(fields: dict, numero_caso_field: str = None) -> int:
+    """
+    Extrai e conta a quantidade de links no campo "Número do Caso".
+    
+    O campo pode conter:
+    - URLs (http://, https://)
+    - Chaves de issues do Jira (PROJETO-1234)
+    - Links markdown [texto](url)
+    
+    Args:
+        fields: Objeto fields da issue do Jira
+        numero_caso_field: Nome do campo customizado (ex: "customfield_10001")
+                          Se None, tenta buscar automaticamente
+    
+    Returns:
+        Quantidade de links encontrados (int)
+    """
+    import re
+    
+    texto_numero_caso = ""
+    
+    # Se foi especificado um campo, tenta usar ele
+    if numero_caso_field and numero_caso_field in fields:
+        valor = fields.get(numero_caso_field)
+        if valor:
+            texto_numero_caso = str(valor)
+    else:
+        # Busca automática: procura por campos que podem conter "Número do Caso"
+        # Tenta variações comuns de nomes
+        campos_possiveis = [
+            "Número do Caso", "Numero do Caso", "número do caso", "numero do caso",
+            "Número de Caso", "Numero de Caso", "Casos", "casos",
+            "Case Number", "case number", "Related Cases", "related cases"
+        ]
+        
+        # Primeiro tenta campos diretos
+        for campo in campos_possiveis:
+            if campo in fields and fields[campo]:
+                texto_numero_caso = str(fields[campo])
+                break
+        
+        # Se não encontrou, procura em campos customizados
+        if not texto_numero_caso:
+            for field_key, field_value in fields.items():
+                if field_key.startswith("customfield_") and field_value:
+                    # Verifica se o valor parece conter links ou chaves de issue
+                    valor_str = str(field_value)
+                    # Procura por padrões que indicam links ou chaves
+                    if re.search(r'https?://|[A-Z]+-\d+|\[.+?\]\(.+?\)', valor_str):
+                        texto_numero_caso = valor_str
+                        break
+    
+    if not texto_numero_caso:
+        return 0
+    
+    # Conta diferentes tipos de links
+    contador = 0
+    
+    # 1. URLs completas (http:// ou https://)
+    urls = re.findall(r'https?://[^\s\)]+', texto_numero_caso)
+    contador += len(urls)
+    
+    # 2. Chaves de issues do Jira (formato PROJETO-1234)
+    # Evita duplicatas se a URL já continha a chave
+    chaves = re.findall(r'\b[A-Z][A-Z0-9]+-\d+\b', texto_numero_caso)
+    # Remove chaves que já estão nas URLs
+    chaves_unicas = []
+    for chave in chaves:
+        ja_contado = False
+        for url in urls:
+            if chave in url:
+                ja_contado = True
+                break
+        if not ja_contado:
+            chaves_unicas.append(chave)
+    
+    contador += len(chaves_unicas)
+    
+    return contador
+
+
 def normalize_issue(issue: dict, config: dict) -> dict:
     """Normaliza issue do Jira para o formato interno unificado."""
     fields = issue["fields"]
+
+    # Extrai Sintoma da descrição (se existir) para usar como Resumo na planilha
+    description = fields.get("description") or ""
+    sintoma = _extract_sintoma(description)
+    
+    # Extrai Responsáveis Dev e QA da descrição
+    dev_responsavel = _extract_dev_responsavel(description)
+    qa_responsavel = _extract_qa_responsavel(description)
+    
+    # Se não encontrou Sintoma, usa o summary do Jira como fallback
+    resumo_planilha = sintoma if sintoma else fields.get("summary", "")
 
     # Texto combinado para classificação
     resolution_text = (fields.get("resolution") or {}).get("name", "")
     text = " ".join(filter(None, [
         fields.get("summary", ""),
-        fields.get("description") or "",
+        description,
         resolution_text,
     ]))
 
     tipo_erro, needs_review = classify_error_type(text, config["tipos_erro"])
     area_map = map_issue_to_area(fields.get("labels", []), config["times"])
 
-    data_criacao = _parse_date(fields.get("created"))
-    data_resolucao = _parse_date(fields.get("resolutiondate"))
+    # ── Extração de datas: prioriza SLA Panel (Start/End Date) ────────────────
+    # Tenta extrair do SLA configurado ou busca automaticamente
+    sla_field = config.get("jira", {}).get("sla_field_name")
+    sla_start, sla_end = _extract_sla_dates(fields, sla_field)
     
-    # Contagem de vínculos (issuelinks)
-    issuelinks = fields.get("issuelinks", [])
-    qtd_vinculos = len(issuelinks) if issuelinks else 0
+    # Se encontrou datas no SLA, usa elas; senão, fallback para created/resolutiondate
+    if sla_start:
+        data_criacao = _parse_date(sla_start)
+    else:
+        data_criacao = _parse_date(fields.get("created"))
+    
+    if sla_end:
+        data_resolucao = _parse_date(sla_end)
+    else:
+        data_resolucao = _parse_date(fields.get("resolutiondate"))
+    
+    # ── Contagem de vínculos: prioriza campo "Número do Caso" ─────────────────
+    # Tenta extrair do campo configurado ou busca automaticamente
+    numero_caso_field = config.get("jira", {}).get("numero_caso_field")
+    qtd_vinculos = _extract_numero_caso_count(fields, numero_caso_field)
+    
+    # Se não encontrou no campo "Número do Caso", fallback para issuelinks
+    if qtd_vinculos == 0:
+        issuelinks = fields.get("issuelinks", [])
+        qtd_vinculos = len(issuelinks) if issuelinks else 0
 
     tempo_resolucao_dias = None
     if data_criacao and data_resolucao:
         tempo_resolucao_dias = (data_resolucao - data_criacao).days
 
-    # ── Ação Realizada no Bug: resolution.name / último comentário ────────────
-    resolution_name = (fields.get("resolution") or {}).get("name", "")
+    # ── Comentários: para extrair Ação Realizada ──────────────────────────────
     comment_data    = fields.get("comment") or {}
     comments_list   = comment_data.get("comments", [])
-    last_comment    = ""
-    if comments_list:
-        body = str(comments_list[-1].get("body") or "").strip()
-        last_comment = (body[:400] + "…") if len(body) > 400 else body
-    if resolution_name and last_comment:
-        acao_realizada = f"{resolution_name} / {last_comment}"
-    elif resolution_name:
-        acao_realizada = resolution_name
-    elif last_comment:
-        acao_realizada = last_comment
-    else:
-        acao_realizada = ""
+    
+    # Extrai Causa Raiz da descrição: texto após "Sintoma:" ou "Situação:" (coluna K)
+    causa_raiz = _extract_causa_raiz(description)
+    
+    # ── Ação Realizada no Bug: busca "Solução:" nos comentários (coluna O) ────
+    resolution_name = (fields.get("resolution") or {}).get("name", "")
+    acao_realizada = _extract_acao_realizada(comments_list, resolution_name)
 
     issue_key = issue["key"]
     manual_mock = _MOCK_MANUAL.get(issue_key, {})
 
     return {
         "key":                   issue_key,
-        "resumo":                fields.get("summary", ""),
-        "descricao":             fields.get("description") or "",
+        "resumo":                resumo_planilha,  # Extrai "Sintoma:" da descrição, fallback para summary
+        "descricao":             description,
         "status":                (fields.get("status") or {}).get("name", ""),
         "prioridade":            (fields.get("priority") or {}).get("name", ""),
         "data_criacao":          data_criacao,
@@ -839,7 +1263,8 @@ def normalize_issue(issue: dict, config: dict) -> dict:
         "labels":                ", ".join(fields.get("labels", [])),
         "tipo_erro_auto":        tipo_erro,
         "tipo_erro_manual":      "",  # preenchido pelo usuário no Excel
-        "acao_realizada":        acao_realizada,
+        "acao_realizada":        acao_realizada,  # Extrai "Solução:" dos comentários
+        "causa_raiz":            causa_raiz,  # Extrai texto após "Sintoma:" ou "Situação:" da descrição
         "analisado":             "",  # preenchido pelo usuário no Excel
         "revisar_classificacao": "⚠️ Revisar" if needs_review else "✅ OK",
         "time":                  area_map["time"],
@@ -848,8 +1273,8 @@ def normalize_issue(issue: dict, config: dict) -> dict:
         "qa_secundario":         area_map["qa_secundario"],
         "dev_principal":         area_map["dev_principal"],
         "dev_secundario":        area_map["dev_secundario"],
-        "dev_responsavel_bug":   "",  # TODO: extrair do Jira (campo custom ou worklog)
-        "qa_responsavel_bug":    "",  # TODO: extrair do Jira (campo custom ou worklog)
+        "dev_responsavel_bug":   dev_responsavel,  # Extrai da descrição "Responsável Desenvolvimento:"
+        "qa_responsavel_bug":    qa_responsavel,   # Extrai da descrição "Responsável QA:"
         "link_jira":             f"{config['jira']['base_url']}/browse/{issue_key}",
         "qtd_vinculos":          qtd_vinculos,  # Quantidade de issuelinks
         "data_importacao":       datetime.now(),  # Data de importação
