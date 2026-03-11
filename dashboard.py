@@ -110,7 +110,6 @@ _EXCEL_COL_MAP = {
     "Tipo de Ajuste":             "ajuste_realizado",
     "Possui TA":                 "possui_ta",
     "Problema Resolvido?":       "problema_resolvido",
-    "Item p/ Resolução Def.":    "item_resolucao_def",
     "QA Principal":              "qa_principal",
     "Dev Principal":             "dev_principal",
     "Analisado":                 "analisado",
@@ -187,31 +186,21 @@ def load_acompanhamento(config: dict) -> pd.DataFrame:
             df = pd.read_excel(str(excel_path), sheet_name="🗂️ Acompanhamento Issue", header=0)
             df.columns = [c.strip() for c in df.columns]
             col_map = {
-                "Item":           "item",
-                "Responsável":    "responsavel",
-                "Área":           "area",
-                "Ação":           "acao",
-                "Status da Ação": "status_acao",
-                "Data Conclusão": "data_conclusao",
-                "Observação":     "observacao",
+                "Issue Acompanhamento": "issue_acomp",
+                "Issue Original":       "issue_original",
+                "Responsável":          "responsavel",
+                "Área":                   "area",
+                "Ação":                   "acao",
+                "Status da Ação":       "status_acao",
+                "Data Conclusão":       "data_conclusao",
+                "Observação":           "observacao",
             }
             df = df.rename(columns=col_map)
             df = df.dropna(how="all")
 
-            # Col A (ítem) é fórmula — openpyxl não avalia, fica NaN.
-            # Lê o valor real de Dados!P (Item p/ Resolução Def.) por alinhamento de linha.
-            try:
-                df_dados = pd.read_excel(str(excel_path), sheet_name="📊 Dados", header=0)
-                df_dados.columns = [c.strip() for c in df_dados.columns]
-                col_item_dados = "Item p/ Resolução Def."
-                if col_item_dados in df_dados.columns:
-                    df["item"] = df_dados[col_item_dados].values[: len(df)]
-            except Exception:
-                pass
-
-            # Remove linhas onde o Item continua vazio
-            if "item" in df.columns:
-                df = df[df["item"].notna() & (df["item"].astype(str).str.strip() != "")]
+            # Remove linhas onde Issue de Acompanhamento está vazia
+            if "issue_acomp" in df.columns:
+                df = df[df["issue_acomp"].notna() & (df["issue_acomp"].astype(str).str.strip() != "")]
 
             if "data_conclusao" in df.columns:
                 df["data_conclusao"] = pd.to_datetime(df["data_conclusao"], errors="coerce")
@@ -220,7 +209,7 @@ def load_acompanhamento(config: dict) -> pd.DataFrame:
         except Exception:
             pass
 
-    return pd.DataFrame(columns=["item", "responsavel", "area", "acao",
+    return pd.DataFrame(columns=["issue_acomp", "issue_original", "responsavel", "area", "acao",
                                   "status_acao", "data_conclusao", "observacao"])
 
 
@@ -856,9 +845,10 @@ def main():
     filters = build_sidebar(df)
     dff = apply_filters(df, filters)
 
-    if "key" in df_acomp.columns and len(dff) > 0:
+    # Filtrar aba Acompanhamento pelas issues filtradas (coluna "Issue Original")
+    if "issue_original" in df_acomp.columns and len(dff) > 0:
         filtered_keys = set(dff["key"].tolist())
-        df_acomp_filtered = df_acomp[df_acomp["key"].isin(filtered_keys)]
+        df_acomp_filtered = df_acomp[df_acomp["issue_original"].isin(filtered_keys)]
     else:
         df_acomp_filtered = df_acomp
 

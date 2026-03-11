@@ -21,6 +21,7 @@ data/
 
 # Config local com token real (nunca comitar tokens!)
 rca_config.local.yaml
+rca_config.yaml
 
 # VS Code
 .vscode/

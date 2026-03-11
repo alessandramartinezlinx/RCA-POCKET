@@ -472,7 +472,7 @@ MOCK_ACTIONS = [
 # =============================================================================
 _MOCK_MANUAL = {
     # Campos: possui_ta, ajuste_realizado, problema_resolvido, analise_causa,
-    #         item_resolucao_def, acomp_area (FFC/FatInt/SupCrmImp/RC),
+    #         acomp_area (FFC/FatInt/SupCrmImp/RC),
     #         acomp_responsavel, acomp_acao, acomp_status_acao, acomp_data_conclusao
     "MODAJOI-98001": {
         "possui_ta": "Sim", "ajuste_realizado": "Correção de banco de dados",
@@ -858,7 +858,6 @@ def normalize_issue(issue: dict, config: dict) -> dict:
         "ajuste_realizado":      manual_mock.get("ajuste_realizado", ""),
         "possui_ta":             manual_mock.get("possui_ta", ""),
         "problema_resolvido":    manual_mock.get("problema_resolvido", ""),
-        "item_resolucao_def":    manual_mock.get("item_resolucao_def", ""),
         # Campos de acompanhamento demo
         "acomp_area":           manual_mock.get("acomp_area", ""),
         "acomp_responsavel":    manual_mock.get("acomp_responsavel", ""),
@@ -890,7 +889,15 @@ class JiraClient:
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
 
     def _is_mock_mode(self) -> bool:
-        return self._get_effective_token() in ("SEU_TOKEN_AQUI", "", None)
+        token = self._get_effective_token()
+        if token in ("SEU_TOKEN_AQUI", "", None):
+            return True
+        # Para Basic Auth, também precisa verificar se username está configurado
+        if self.auth_type == "basic":
+            username = self.config["jira"].get("username", "")
+            if not username or username == "":
+                return True
+        return False
 
     def _get_effective_token(self) -> str:
         """Prioridade: env var JIRA_API_TOKEN (Key Vault via pipeline) > rca_config.yaml."""
@@ -937,21 +944,49 @@ class JiraClient:
         Respeita o header Retry-After em caso de 429 (rate limit do Jira DC).
         Usa timeout separado para conexão (5s) e leitura (30s).
         """
+        print(f"[DEBUG] Fazendo requisição startAt={start_at}, maxResults={max_results}")
+        
         for attempt in range(1, 4):
-            response = session.get(
-                f"{self.base_url}/rest/api/2/search",
-                params={"jql": jql, "fields": fields,
-                        "maxResults": max_results, "startAt": start_at},
-                timeout=(5, 30),       # (connect timeout, read timeout)
-            )
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 60))
-                print(f"[WARN] Rate limit (429) — aguardando {retry_after}s "
-                      f"(tentativa {attempt}/3)...")
-                time.sleep(retry_after)
-                continue
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = session.get(
+                    f"{self.base_url}/rest/api/2/search",
+                    params={"jql": jql, "fields": fields,
+                            "maxResults": max_results, "startAt": start_at},
+                    timeout=(10, 120),       # (connect timeout, read timeout)
+                )
+                print(f"[DEBUG] Status Code: {response.status_code}")
+                
+                if response.status_code == 401:
+                    print(f"[ERROR] 401 Unauthorized - Credenciais inválidas!")
+                    print(f"[ERROR] Response: {response.text[:300]}")
+                    raise requests.exceptions.HTTPError("401 Unauthorized")
+                    
+                if response.status_code == 403:
+                    print(f"[ERROR] 403 Forbidden - Sem permissão!")
+                    print(f"[ERROR] Response: {response.text[:300]}")
+                    raise requests.exceptions.HTTPError("403 Forbidden")
+                
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 60))
+                    print(f"[WARN] Rate limit (429) — aguardando {retry_after}s "
+                          f"(tentativa {attempt}/3)...")
+                    time.sleep(retry_after)
+                    continue
+                    
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.Timeout:
+                print(f"[ERROR] Timeout após 30s (tentativa {attempt}/3)")
+                if attempt == 3:
+                    raise
+                time.sleep(5)
+            except requests.exceptions.ConnectionError as e:
+                print(f"[ERROR] Erro de conexão (tentativa {attempt}/3): {e}")
+                if attempt == 3:
+                    raise
+                time.sleep(5)
+                
         raise RuntimeError("Rate limit persistente (429) — tente novamente mais tarde.")
 
     def _fetch_from_api(self) -> list:

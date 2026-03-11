@@ -151,18 +151,17 @@ DADOS_COLS = [
     ("S", "Resultado da Automação",    20),
     ("T", "Contexto",                  40),
     ("U", "Problema Resolvido?",       18),
-    ("V", "Item p/ Resolução Def.",    42),
-    ("W", "QA Principal",              18),
-    ("X", "Dev Principal",             18),
-    ("Y", "Issue de Acompanhamento",   18),
-    ("Z", "Analisado",                 14),
-    ("AA", "Semana",                   12),
+    ("V", "QA Principal",              18),
+    ("W", "Dev Principal",             18),
+    ("X", "Issue de Acompanhamento",   18),
+    ("Y", "Analisado",                 14),
+    ("Z", "Semana",                    12),
 ]
 
 # Cores dos 3 blocos de cabeçalho
 _BG_BLOCO1 = "1F4E79"   # azul escuro  — A–K (dados Jira + vínculos + causa raiz)
 _BG_BLOCO2 = "44546A"   # slate        — L–O (categorização)
-_BG_BLOCO3 = "375623"   # verde escuro — P–AA (análise manual)
+_BG_BLOCO3 = "375623"   # verde escuro — P–Z (análise manual)
 
 def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     ws.title = "📊 Dados"
@@ -175,7 +174,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     for ci in range(12, 16):   # L–O → bloco 2
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO2)
-    for ci in range(16, 28):  # P–AA → bloco 3 (12 colunas)
+    for ci in range(16, 27):  # P–Z → bloco 3 (12 colunas)
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO3)
 
@@ -256,12 +255,11 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             _m("resultado_automacao"),                     # S  Resultado da Automação ← manual
             _m("contexto"),                                # T  Contexto ← manual
             _m("problema_resolvido"),                      # U  Problema Resolvido? ← manual
-            _m("item_resolucao_def"),                      # V  Item p/ Resolução Def. ← manual
-            issue.get("qa_principal", ""),                 # W  QA Principal
-            issue.get("dev_principal", ""),                # X  Dev Principal
-            _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
-            _m("analisado"),                               # Z  Analisado ← manual
-            issue.get("_semana", ""),                      # AA Semana
+            issue.get("qa_principal", ""),                 # V  QA Principal
+            issue.get("dev_principal", ""),                # W  Dev Principal
+            _m("issue_acompanhamento"),                    # X  Issue de Acompanhamento ← manual
+            _m("analisado"),                               # Y  Analisado ← manual
+            issue.get("_semana", ""),                      # Z  Semana
         ]
 
         # Escreve valores base
@@ -274,7 +272,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         # Aplica cor pastel de bloco em TODAS as células da linha
         for ci in range(1, 12):   ws.cell(row=row_idx, column=ci).fill = fill_b1  # A-K
         for ci in range(12, 16):  ws.cell(row=row_idx, column=ci).fill = fill_b2  # L-O
-        for ci in range(16, 28):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-AA
+        for ci in range(16, 27):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-Z
 
         # G (7): fórmula — diferença em dias entre datas
         g_cell = ws.cell(row=row_idx, column=7)
@@ -319,8 +317,8 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if st_color:
             status_cell.fill = PatternFill("solid", fgColor=st_color)
 
-        # AA (27): Semana - destaque visual para semana atual
-        semana_cell = ws.cell(row=row_idx, column=27)
+        # Z (26): Semana - destaque visual para semana atual
+        semana_cell = ws.cell(row=row_idx, column=26)
         if issue.get("_semana") == "Atual":
             semana_cell.fill = PatternFill("solid", fgColor="C6EFCE")  # verde claro
             semana_cell.font = Font(bold=True, size=9, color="006100")
@@ -365,13 +363,12 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
 ACOMP_COLS = [
     ("A", "Issue Acompanhamento", 18),
     ("B", "Issue Original",       16),
-    ("C", "Item",                 45),
-    ("D", "Responsável",          22),
-    ("E", "Área",                  22),
-    ("F", "Ação",                 45),
-    ("G", "Status da Ação",       18),
-    ("H", "Data Conclusão",       14),
-    ("I", "Observação",           40),
+    ("C", "Responsável",          22),
+    ("D", "Área",                  22),
+    ("E", "Ação",                 45),
+    ("F", "Status da Ação",       18),
+    ("G", "Data Conclusão",       14),
+    ("H", "Observação",           40),
 ]
 
 
@@ -453,41 +450,32 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
         if link:
             cell_orig.hyperlink = link
 
-        # C: Fórmula — espelha Dados!V da linha correspondente
-        cell_item = ws.cell(row=row_idx, column=3)
-        sheet = "\U0001f4ca Dados"
-        cell_item.value = f"=IF('{sheet}'!V{dados_row}=\"\",\"\",'{sheet}'!V{dados_row})"
-        cell_item.border    = _make_thin_border()
-        cell_item.font      = Font(size=9, color="444444")
-        cell_item.alignment = Alignment(vertical="center", wrap_text=True)
-        cell_item.fill      = PatternFill("solid", fgColor="F2F2F2")
-
-        # D–I: dados manuais (preservados entre gerações)
+        # C–H: dados manuais (preservados entre gerações)
         status_val = acomp_data.get("status_acao", "")
         vals_manual = [
-            acomp_data.get("responsavel", ""),           # D
-            acomp_data.get("area", ""),                  # E
-            acomp_data.get("acao", ""),                  # F
-            status_val,                                   # G
+            acomp_data.get("responsavel", ""),           # C
+            acomp_data.get("area", ""),                  # D
+            acomp_data.get("acao", ""),                  # E
+            status_val,                                   # F
             (_to_excel_date(acomp_data["data_conclusao"])
-             if acomp_data.get("data_conclusao") else None),  # H
-            acomp_data.get("observacao", ""),            # I
+             if acomp_data.get("data_conclusao") else None),  # G
+            acomp_data.get("observacao", ""),            # H
         ]
-        for ci, val in enumerate(vals_manual, start=4):
+        for ci, val in enumerate(vals_manual, start=3):
             cell           = ws.cell(row=row_idx, column=ci, value=val)
             cell.border    = _make_thin_border()
             cell.font      = Font(size=9)
-            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 9))
+            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 8))
 
-        # Data Conclusão (H=8) — formato de data
-        dcf = ws.cell(row=row_idx, column=8)
+        # Data Conclusão (G=7) — formato de data
+        dcf = ws.cell(row=row_idx, column=7)
         if dcf.value:
             dcf.number_format = "DD/MM/YYYY"
 
-        # Cor por Status (G=7)
+        # Cor por Status (F=6)
         sc = colors_acomp.get(status_val)
         if sc:
-            ws.cell(row=row_idx, column=7).fill = PatternFill("solid", fgColor=sc)
+            ws.cell(row=row_idx, column=6).fill = PatternFill("solid", fgColor=sc)
         
         row_idx += 1
 
@@ -495,8 +483,8 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
     last_row = max(row_idx - 1, 2)
     last_col = len(ACOMP_COLS)
 
-    dv_status.sqref = f"G2:G{last_row + 50}"
-    dv_area.sqref   = f"E2:E{last_row + 50}"
+    dv_status.sqref = f"F2:F{last_row + 50}"
+    dv_area.sqref   = f"D2:D{last_row + 50}"
 
     if n_rows > 0:
         _add_table(ws, "TabelaAcompanhamento",
@@ -603,7 +591,6 @@ def _read_existing_manual_data(filepath: str) -> dict:
             col_resultado_auto = header.index("Resultado da Automação") if "Resultado da Automação" in header else None
             col_contexto  = header.index("Contexto")               if "Contexto"                in header else None
             col_prob      = header.index("Problema Resolvido?")    if "Problema Resolvido?"    in header else None
-            col_item      = header.index("Item p/ Resolução Def.") if "Item p/ Resolução Def." in header else None
             col_issue_acomp = header.index("Issue de Acompanhamento") if "Issue de Acompanhamento" in header else None
 
             manual_indices = {
@@ -614,7 +601,6 @@ def _read_existing_manual_data(filepath: str) -> dict:
                 "resultado_automacao": col_resultado_auto,
                 "contexto":           col_contexto,
                 "problema_resolvido": col_prob,
-                "item_resolucao_def": col_item,
                 "issue_acompanhamento": col_issue_acomp,
                 "analisado":          col_analisado,
             }
