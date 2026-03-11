@@ -12,5 +12,8 @@ openpyxl>=3.1.2
 # HTTP / Jira API
 requests>=2.31.0
 
+# GitHub API (validação de TAs)
+PyGithub>=2.1.1
+
 # YAML (já no projeto principal, listado para completude)
 pyyaml>=6.0.2

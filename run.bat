@@ -39,17 +39,22 @@ echo Escolha uma opção:
 echo.
 echo   [1] Sincronizar Jira + Gerar Excel + Abrir Dashboard
 echo   [2] Apenas Gerar/Atualizar Excel
-echo   [3] Apenas Abrir Dashboard (sem sincronizar)
+echo   [3] Apenas Abrir Dashboard (usa dados do Excel existente)
+echo   [4] Validar Cobertura de TAs (busca GitHub Robot Framework)
 if not "%SHAREPOINT_URL%"=="" echo   [5] Abrir Excel Online (SharePoint)
-echo   [4] Sair
+echo   [0] Sair
+echo.
+echo Nota: O Dashboard sempre lê os dados atualizados do Excel automaticamente.
+echo       Se você editou campos manuais no Excel, basta abrir o Dashboard (opção 3).
 echo.
 set /p OPCAO=Opção: 
 
 if "%OPCAO%"=="1" goto SYNC_ALL
 if "%OPCAO%"=="2" goto EXCEL_ONLY
 if "%OPCAO%"=="3" goto DASHBOARD_ONLY
-if "%OPCAO%"=="4" goto FIM
+if "%OPCAO%"=="4" goto VALIDAR_TAS
 if "%OPCAO%"=="5" goto EXCEL_ONLINE
+if "%OPCAO%"=="0" goto FIM
 echo Opção inválida.
 goto FIM
 
@@ -122,6 +127,63 @@ if "%SHAREPOINT_URL%"=="" (
 echo.
 echo 🌐 Abrindo Excel Online...
 start "" "%SHAREPOINT_URL%"
+goto FIM
+
+:: ─── Modo 6: Validar TAs ──────────────────────────────────────────────────────
+:VALIDAR_TAS
+echo.
+echo 🤖 Validando cobertura de Testes Automatizados...
+echo.
+
+:: Verifica token GitHub
+if "%GITHUB_TOKEN%"=="" (
+    echo ⚠️  ATENÇÃO: Token GitHub não configurado!
+    echo.
+    echo    Para usar este recurso, você precisa:
+    echo.
+    echo    1. Criar token em: https://github.com/settings/tokens
+    echo       ^(Marque permissão: repo - read^)
+    echo.
+    echo    2. Configurar variável de ambiente:
+    echo       PowerShell: $env:GITHUB_TOKEN = "ghp_seu_token"
+    echo       CMD:        set GITHUB_TOKEN=ghp_seu_token
+    echo.
+    echo    3. Ou salvar permanentemente:
+    echo       [System.Environment]::SetEnvironmentVariable^('GITHUB_TOKEN', 'ghp_token', 'User'^)
+    echo.
+    echo    Consulte VALIDACAO_TAS.md para instruções detalhadas.
+    echo.
+    pause
+    goto FIM
+)
+
+:: Verifica PyGithub
+python -c "import github" 2>nul
+if %errorlevel% neq 0 (
+    echo 📦 Instalando PyGithub...
+    pip install PyGithub -q
+)
+
+echo 🔍 Buscando TAs no repositório GitHub...
+echo    Repo: MEDIUM-RETAIL-MICROVIX/ta-robotframework
+echo.
+python validar_tas_planilha.py
+if %errorlevel% neq 0 (
+    echo ❌ Falha ao validar TAs.
+    pause
+    goto FIM
+)
+
+echo.
+echo ✅ Validação concluída!
+echo    Coluna "Possui TA" atualizada no Excel.
+echo.
+set /p ABRIR_DASH=   Abrir Dashboard para visualizar? [S/N]: 
+if /i "!ABRIR_DASH!"=="S" (
+    echo.
+    echo 🚀 Abrindo Dashboard...
+    streamlit run dashboard.py --server.port 8501 --server.headless false
+)
 goto FIM
 
 :FIM

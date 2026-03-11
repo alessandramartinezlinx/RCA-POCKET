@@ -779,6 +779,88 @@ def map_issue_to_area(labels: list, times_config: dict) -> dict:
     return result
 
 
+# =============================================================================
+# INFERÊNCIA INTELIGENTE DE TIME/ÁREA (fallback quando não há labels)
+# =============================================================================
+
+KEYWORDS_TIME_AREA = {
+    "Suprimentos": {
+        "Entrada XML": ["xml", "nfe", "nf-e", "nota fiscal", "entrada", "sefaz", "danfe"],
+        "Balanço": ["balanço", "balanco", "inventário", "inventario", "contagem", "estoque físico"],
+        "Compras 2.0": ["compras", "compra", "pedido de compra", "sugestão de compra", "sugestao compras"],
+        "Estoque": ["estoque", "movimentação", "movimentacao", "saldo", "deposito", "depósito"]
+    },
+    "FFC": {
+        "Conciliadores": ["conciliador", "conciliação", "conciliacao", "pagamento", "recebimento"],
+        "Gestão Financeira": ["gestão financeira", "gestao financeira", "financeiro", "contas a pagar", "contas a receber"],
+        "NF-e": ["emissão", "emissao", "faturamento", "nf-e", "nota fiscal saída"],
+        "Rejeições": ["rejeição", "rejeicao", "rejeições", "rejeicoes", "sefaz rejeitou", "erro sefaz"]
+    },
+    "FatInt": {
+        "Venda Fácil": ["venda fácil", "venda facil", "pdv", "pos", "caixa", "frente de loja", "checkout"],
+        "B2C": ["b2c", "e-commerce", "ecommerce", "loja virtual", "marketplace", "carrinho"],
+        "B2B": ["b2b", "atacado", "distribuidora"],
+        "Integração": ["integração", "integracao", "webhook", "api", "rest", "sincronização"]
+    }
+}
+
+
+def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
+    """
+    Infere Time/Área/Responsáveis analisando texto (resumo + descrição).
+    Usado como fallback quando issue não tem labels.
+    
+    Args:
+        texto: texto combinado (resumo + descrição)
+        times_config: config['times'] do rca_config.yaml
+    
+    Returns:
+        dict com time, area, qa_principal, dev_principal ou "Não Mapeado" se sem match
+    """
+    texto_lower = texto.lower()
+    
+    melhor_match = None
+    melhor_score = 0
+    melhor_time = None
+    melhor_area_nome = None
+    
+    # Busca por keywords
+    for time_name, areas_keywords in KEYWORDS_TIME_AREA.items():
+        for area_nome, keywords in areas_keywords.items():
+            score = sum(1 for keyword in keywords if keyword in texto_lower)
+            
+            if score > melhor_score:
+                melhor_score = score
+                melhor_match = (time_name, area_nome)
+                melhor_time = time_name
+                melhor_area_nome = area_nome
+    
+    # Se encontrou match, busca responsáveis no config
+    if melhor_match and melhor_score > 0:
+        # Busca dados completos (qa_principal, dev_principal) no times_config
+        time_data = times_config.get(melhor_time, {})
+        for area in time_data.get("areas", []):
+            if area.get("nome") == melhor_area_nome:
+                return {
+                    "time": melhor_time,
+                    "area": melhor_area_nome,
+                    "qa_principal": area.get("qa_principal", ""),
+                    "qa_secundario": area.get("qa_secundario", ""),
+                    "dev_principal": area.get("dev_principal", ""),
+                    "dev_secundario": area.get("dev_secundario", ""),
+                }
+    
+    # Sem match: retorna "Não Mapeado"
+    return {
+        "time": "Não Mapeado",
+        "area": "Não Mapeado",
+        "qa_principal": "",
+        "qa_secundario": "",
+        "dev_principal": "",
+        "dev_secundario": "",
+    }
+
+
 def _extract_sintoma(description: str) -> str:
     """
     Extrai o texto após 'Sintoma:' da descrição do Jira.
@@ -1204,6 +1286,10 @@ def normalize_issue(issue: dict, config: dict) -> dict:
 
     tipo_erro, needs_review = classify_error_type(text, config["tipos_erro"])
     area_map = map_issue_to_area(fields.get("labels", []), config["times"])
+    
+    # Se não mapeou por labels, tenta inferência inteligente por texto
+    if area_map["time"] == "Não Mapeado" or area_map["area"] == "Não Mapeado":
+        area_map = inferir_time_area_por_texto(text, config["times"])
 
     # ── Extração de datas: prioriza SLA Panel (Start/End Date) ────────────────
     # Tenta extrair do SLA configurado ou busca automaticamente
@@ -1513,6 +1599,13 @@ class JiraClient:
             # Cache sempre salvo como {"synced_at": ..., "issues": [...]}
             return data.get("issues", []) if isinstance(data, dict) else data
         return []
+    
+    def _load_cache_raw(self) -> dict:
+        """Carrega cache no formato bruto (dict completo com meta)."""
+        if self.cache_file.exists():
+            with open(self.cache_file, encoding="utf-8") as f:
+                return json.load(f)
+        return {}
 
     def _save_cache(self, issues_raw: list, normalized: list):
         """Salva cache com gravação atômica (write temp + rename) para evitar corrupção.
@@ -1553,10 +1646,16 @@ class JiraClient:
     def get_normalized_issues(self) -> list:
         """
         Retorna lista de issues normalizadas.
-        - Mock mode: retorna MOCK_ISSUES processados
+        - Mock mode: retorna MOCK_ISSUES processados (a menos que cache tenha flag force_use)
         - Real mode: busca Jira API + merge com cache existente
         """
+        # Verifica se há cache com flag force_use (importado de planilha exemplo) 
         if self._is_mock_mode():
+            cached = self._load_cache_raw()  # Carrega formato bruto
+            if cached and cached.get("meta", {}).get("force_use_cache"):
+                print("[INFO] Usando cache importado (força uso mesmo em modo mock)")
+                return cached.get("issues", [])
+            
             print("[MOCK] Token não configurado — usando dados de demonstração")
             normalized = [normalize_issue(i, self.config) for i in MOCK_ISSUES]
             self._save_cache(MOCK_ISSUES, normalized)

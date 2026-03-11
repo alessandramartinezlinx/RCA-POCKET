@@ -148,20 +148,21 @@ DADOS_COLS = [
     ("P", "Análise da Causa",          40),
     ("Q", "Tipo de Ajuste",            22),
     ("R", "Possui TA",                 14),
-    ("S", "Resultado da Automação",    20),
-    ("T", "Contexto",                  40),
-    ("U", "Problema Resolvido?",       18),
-    ("V", "QA Principal",              18),
-    ("W", "Dev Principal",             18),
-    ("X", "Issue de Acompanhamento",   18),
-    ("Y", "Analisado",                 14),
-    ("Z", "Semana",                    12),
+    ("S", "Arquivo TA",                35),  # NOVO: referência aos arquivos .robot
+    ("T", "Resultado da Automação",    20),
+    ("U", "Contexto",                  40),
+    ("V", "Problema Resolvido?",       18),
+    ("W", "QA Principal",              18),
+    ("X", "Dev Principal",             18),
+    ("Y", "Issue de Acompanhamento",   18),
+    ("Z", "Analisado",                 14),
+    ("AA", "Semana",                   12),
 ]
 
 # Cores dos 3 blocos de cabeçalho
 _BG_BLOCO1 = "1F4E79"   # azul escuro  — A–K (dados Jira + vínculos + causa raiz)
 _BG_BLOCO2 = "44546A"   # slate        — L–O (categorização)
-_BG_BLOCO3 = "375623"   # verde escuro — P–Z (análise manual)
+_BG_BLOCO3 = "375623"   # verde escuro — P–AA (análise manual)
 
 def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     ws.title = "📊 Dados"
@@ -174,7 +175,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     for ci in range(12, 16):   # L–O → bloco 2
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO2)
-    for ci in range(16, 27):  # P–Z → bloco 3 (12 colunas)
+    for ci in range(16, 28):  # P–AA → bloco 3 (13 colunas)
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO3)
 
@@ -252,14 +253,15 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             _m("analise_causa"),                           # P  Análise da Causa ← manual
             _m("ajuste_realizado"),                        # Q  Tipo de Ajuste ← manual
             _m("possui_ta"),                               # R  Possui TA ← manual
-            _m("resultado_automacao"),                     # S  Resultado da Automação ← manual
-            _m("contexto"),                                # T  Contexto ← manual
-            _m("problema_resolvido"),                      # U  Problema Resolvido? ← manual
-            issue.get("qa_principal", ""),                 # V  QA Principal
-            issue.get("dev_principal", ""),                # W  Dev Principal
-            _m("issue_acompanhamento"),                    # X  Issue de Acompanhamento ← manual
-            _m("analisado"),                               # Y  Analisado ← manual
-            issue.get("_semana", ""),                      # Z  Semana
+            _m("arquivo_ta"),                              # S  Arquivo TA ← automático (validação)
+            _m("resultado_automacao"),                     # T  Resultado da Automação ← manual
+            _m("contexto"),                                # U  Contexto ← manual
+            _m("problema_resolvido"),                      # V  Problema Resolvido? ← manual
+            issue.get("qa_principal", ""),                 # W  QA Principal
+            issue.get("dev_principal", ""),                # X  Dev Principal
+            _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
+            _m("analisado"),                               # Z  Analisado ← manual
+            issue.get("_semana", ""),                      # AA Semana
         ]
 
         # Escreve valores base
@@ -272,7 +274,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         # Aplica cor pastel de bloco em TODAS as células da linha
         for ci in range(1, 12):   ws.cell(row=row_idx, column=ci).fill = fill_b1  # A-K
         for ci in range(12, 16):  ws.cell(row=row_idx, column=ci).fill = fill_b2  # L-O
-        for ci in range(16, 27):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-Z
+        for ci in range(16, 28):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-AA
 
         # G (7): fórmula — diferença em dias entre datas
         g_cell = ws.cell(row=row_idx, column=7)
@@ -317,8 +319,8 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if st_color:
             status_cell.fill = PatternFill("solid", fgColor=st_color)
 
-        # Z (26): Semana - destaque visual para semana atual
-        semana_cell = ws.cell(row=row_idx, column=26)
+        # AA (27): Semana - destaque visual para semana atual
+        semana_cell = ws.cell(row=row_idx, column=27)
         if issue.get("_semana") == "Atual":
             semana_cell.fill = PatternFill("solid", fgColor="C6EFCE")  # verde claro
             semana_cell.font = Font(bold=True, size=9, color="006100")
@@ -343,9 +345,9 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
 
     dv_ajuste.sqref         = "Q2:Q{sfx}".format(sfx=sfx)
     dv_possui_ta.sqref      = "R2:R{sfx}".format(sfx=sfx)
-    dv_resultado_auto.sqref = "S2:S{sfx}".format(sfx=sfx)
-    dv_prob_res.sqref       = "U2:U{sfx}".format(sfx=sfx)
-    dv_analisado.sqref      = "Z2:Z{sfx}".format(sfx=sfx)
+    dv_resultado_auto.sqref = "T2:T{sfx}".format(sfx=sfx)
+    dv_prob_res.sqref       = "V2:V{sfx}".format(sfx=sfx)
+    dv_analisado.sqref      = "AA2:AA{sfx}".format(sfx=sfx)
     ws.add_data_validation(dv_ajuste)
     ws.add_data_validation(dv_possui_ta)
     ws.add_data_validation(dv_resultado_auto)
@@ -698,8 +700,15 @@ def _sort_issues_by_priority(issues: list) -> list:
         qtd_vinculos = issue.get("qtd_vinculos", 0)
         prioridade = issue.get("prioridade", "")
         data_imp = issue.get("data_importacao") or datetime(2000, 1, 1)
-        
-        # Peso da prioridade: Crítica=0 (maior prioridade), Alta=1, demais=2
+                # Converte data_importacao se for string ISO
+        if isinstance(data_imp, str):
+            try:
+                data_imp = datetime.fromisoformat(data_imp)
+            except (ValueError, TypeError):
+                data_imp = datetime(2000, 1, 1)
+        elif not isinstance(data_imp, datetime):
+            data_imp = datetime(2000, 1, 1)
+                # Peso da prioridade: Crítica=0 (maior prioridade), Alta=1, demais=2
         if prioridade == "Crítica":
             peso_prio = 0
         elif prioridade == "Alta":
@@ -732,6 +741,15 @@ def _apply_weekly_stacking(issues: list, preserved_data: dict) -> list:
     
     for issue in issues:
         data_imp = issue.get("data_importacao")
+        
+        # Converte data_importacao se for string ISO
+        if isinstance(data_imp, str):
+            try:
+                data_imp = datetime.fromisoformat(data_imp)
+                issue["data_importacao"] = data_imp  # Atualiza no dict
+            except (ValueError, TypeError):
+                data_imp = None
+        
         if data_imp and data_imp >= inicio_semana:
             issues_semana_atual.append(issue)
         else:

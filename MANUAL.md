@@ -22,8 +22,23 @@ As issues agora são **automaticamente ordenadas** seguindo critérios de negóc
 **Novas colunas:**
 - **H - Qtd Vínculos**: Quantidade de issues linkadas no Jira (com destaque visual)
 - **V - Semana**: Indica se é "Atual" ou "Anterior" (com cores diferentes)
+- **W - Possui TA**: Indica se existe teste automatizado (Robot Framework) no GitHub
 
 📄 Detalhes completos em [`FUNCIONALIDADE_ORDENACAO.md`](FUNCIONALIDADE_ORDENACAO.md)
+
+### 🤖 Validação Automática de Testes Automatizados (TAs)
+
+Nova integração com o **repositório Robot Framework** no GitHub para validar cobertura de testes automatizados:
+
+- ✅ **Busca automática** no repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework)
+- 🔍 **Dupla estratégia**: busca por `MODAJOI-XXXXX` e tags `SHOP-JOI-XXXXX`
+- 📊 **Relatório de cobertura**: % de issues com/sem TA
+- 💾 **Cache inteligente**: evita requisições repetidas ao GitHub API
+- 🔄 **Atualização automática**: popula coluna "Possui TA" com Sim/Não
+
+**Como usar**: Opção **[6]** no `run.bat` ou comando direto `python validar_tas_planilha.py`
+
+📄 Guia completo em [`VALIDACAO_TAS.md`](VALIDACAO_TAS.md)
 
 ---
 
@@ -46,7 +61,7 @@ Ambos leem dos mesmos dados: issues do Jira (via API ou cache local).
 pip install -r requirements.txt
 ```
 
-**Dependências principais:** `openpyxl`, `requests`, `streamlit`, `plotly`, `pandas`, `pyyaml`
+**Dependências principais:** `openpyxl`, `requests`, `streamlit`, `plotly`, `pandas`, `pyyaml`, `PyGithub` (validação TAs)
 
 ---
 
@@ -114,6 +129,9 @@ Lista todas as issues do Jira com classificação automática.
 | **Tipo Erro Manual** | Dropdown para correção manual — tem prioridade sobre o automático |
 | Revisar? | Flag para issues que precisam de reclassificação |
 | QA/Dev Principal/Secundário | Responsáveis mapeados por área |
+| **Possui TA** 🤖 | **Sim** ou **Não** — indica se existe teste automatizado no GitHub (Robot Framework) |
+| **Arquivo TA** 📁 | Nome dos arquivos `.robot` encontrados (ex: `Venda_Nfe.robot, Troca_Facil.robot (+1)`) |
+| **Resultado da Automação** | Detectou problema / Não detectou / Não se Aplica (dropdown) |
 | Labels / Link Jira | Labels originais e link direto |
 
 **Como filtrar:** clique nas setas do cabeçalho da tabela (AutoFilter nativo do Excel).
@@ -237,18 +255,144 @@ Clique em **⬇️ Exportar CSV** para baixar os dados exibidos.
                              → gera/atualiza RCA_Pocket.xlsx
                              → dados manuais existentes são preservados
 
-3. [Time de QA]             Abre RCA_Pocket.xlsx
+3. [NOVO] Validar TAs       python validar_tas_planilha.py (ou run.bat opção [4])
+                             → busca testes no GitHub Robot Framework
+                             → atualiza coluna "Possui TA" automaticamente
+                             → gera relatório de cobertura
+
+4. [Time de QA]             Abre RCA_Pocket.xlsx
                              → preenche Ações (aba ✅) e 5 Whys (aba 🔍)
                              → corrige Tipo Erro Manual se necessário
+                             → verifica coluna "Possui TA" para priorizar automação
 
-4. [Gesture / Reunião]      streamlit run dashboard.py
+5. [Gesture / Reunião]      streamlit run dashboard.py
                              → filtra por período, time, área
                              → exporta CSV para apresentação
 ```
 
 ---
 
-## 7. Modo MOCK (protótipo sem token)
+## 7. 🤖 Validação de Testes Automatizados (TAs)
+
+### 7.1 Visão Geral
+
+Integração com o **repositório Robot Framework** no GitHub para validar se as issues do RCA Pocket possuem cobertura de testes automatizados.
+
+**Benefícios:**
+- Identifica **gaps de cobertura** (issues sem TA)
+- Prioriza criação de testes para bugs críticos
+- Gera **métricas de qualidade** (% issues com TA)
+- Valida rastreabilidade entre bugs e regressões
+
+### 7.2 Como Funciona
+
+1. **Leitura**: Script lê todas as issues da coluna **Key** na planilha
+2. **Busca GitHub**: Para cada issue, busca no repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework):
+   - Menção direta: `MODAJOI-XXXXX` em arquivos `.robot`
+   - Tag Robot: `[Tags] SHOP-JOI-XXXXX` (padrão do time)
+   - Comentários: Referências em documentação
+3. **Atualização**: Preenche automaticamente:
+   - Coluna **R (Possui TA)**: "Sim" ou "Não"
+   - Coluna **S (Arquivo TA)**: Nome dos arquivos encontrados (ex: `Venda_Nfe.robot, Troca_Facil.robot (+1)`)
+4. **Relatório**: Exibe:
+   - % de cobertura total
+   - Lista de issues **com** TA (+ arquivos `.robot` encontrados)
+   - Lista de issues **sem** TA (sugestão de priorização)
+
+### 7.3 Configuração (Primeira Vez)
+
+**Passo 1 - Criar Token GitHub:**
+```
+1. Acesse: https://github.com/settings/tokens
+2. Clique: "Generate new token (classic)"
+3. Marque: ☑ repo (read)
+4. Copie o token: ghp_xxxxxxxxxxxxx
+```
+
+**Passo 2 - Configurar Variável de Ambiente:**
+```powershell
+# PowerShell como Administrador (permanente)
+[System.Environment]::SetEnvironmentVariable('GITHUB_TOKEN', 'ghp_seu_token', 'User')
+
+# Ou temporário (válido apenas na sessão atual)
+$env:GITHUB_TOKEN = "ghp_seu_token"
+```
+
+**Passo 3 - Instalar Dependência:**
+```bash
+pip install PyGithub
+```
+
+### 7.4 Uso
+
+**Opção 1 - Via run.bat (recomendado):**
+```batch
+run.bat
+# Escolha: [6] Validar Cobertura de TAs
+```
+
+**Opção 2 - Comando direto:**
+```bash
+python validar_tas_planilha.py
+```
+
+**Exemplo de Saída:**
+```
+🔍 VALIDAÇÃO DE TESTES AUTOMATIZADOS - RCA POCKET
+
+📄 Lendo planilha RCA_Pocket.xlsx...
+  16 issue(s) encontrado(s)
+
+  Buscando TAs para MODAJOI-98445...
+    ✅ MODAJOI-98445: 2 TA(s) encontrado(s)
+  Buscando TAs para MODAJOI-99590...
+    ❌ MODAJOI-99590: Nenhum TA encontrado
+
+� Atualizando planilha...
+  ✅ Coluna R (Possui TA): Sim/Não
+  ✅ Coluna S (Arquivo TA): Nomes dos arquivos .robot
+  ✅ 3 issue(s) atualizado(s)
+
+�📊 RELATÓRIO DE COBERTURA
+Total: 16 issues
+  ✅ Com TA:  8 (50.0%)
+  ❌ Sem TA:  8 (50.0%)
+
+Issues COM teste:
+  MODAJOI-98445:
+    • Tests/ERP/Faturamento/Venda_Facil/Venda_Nfe.robot
+
+Issues SEM teste (priorizar):
+  • MODAJOI-99590
+  • MODAJOI-100041
+```
+
+### 7.5 Cache de Validações
+
+O sistema mantém cache em `data/ta_validation_cache.json` para:
+- ⚡ Evitar requisições repetidas ao GitHub
+- 💰 Economizar rate limit da API (5000/hora com token)
+- 🚀 Acelerar validações subsequentes
+
+**Limpar cache manualmente:**
+```powershell
+Remove-Item data/ta_validation_cache.json
+```
+
+### 7.6 Resolução de Problemas
+
+| Erro | Solução |
+|---|---|
+| "Token GitHub não configurado" | Configure `GITHUB_TOKEN` (veja seção 7.3) |
+| "API rate limit exceeded" | Aguarde 1 hora ou use token para aumentar limite |
+| "No module named 'github'" | Execute: `pip install PyGithub` |
+| Todos marcados como "Não" | Verifique se token tem permissão `repo` |
+
+📄 **Guia completo:** [`VALIDACAO_TAS.md`](VALIDACAO_TAS.md)
+
+---
+
+## 8. Modo MOCK (protótipo sem token)
 
 Quando o token **não está configurado**, o sistema usa **30 issues fictícias** cobrindo Out/2025 a Mar/2026 do time de Suprimentos. Ideal para demonstrações e validação da ferramenta antes da integração com Jira real.
 
@@ -256,7 +400,7 @@ Para ativar token real: defina `JIRA_API_TOKEN` como variável de ambiente ou pr
 
 ---
 
-## 8. Resolução de problemas
+## 9. Resolução de problemas
 
 | Sintoma | Causa provável | Solução |
 ---|---|---
@@ -265,3 +409,5 @@ Para ativar token real: defina `JIRA_API_TOKEN` como variável de ambiente ou pr
 | Erro 429 no Jira | Rate limit atingido | Client aguarda automaticamente (Retry-After); reduzir `parallel_pagination` |
 | Issues não aparecem no período | Cache desatualizado | Clique 🔄 Atualizar no dashboard ou reexecute `generate_excel.py` |
 | Tipo de erro errado | Keywords não mapeadas | Adicione keywords na seção `tipos_erro:` do YAML |
+| Validação de TA falha | Token GitHub ausente | Configure `GITHUB_TOKEN` (veja seção 7.3) |
+| Coluna "Possui TA" vazia | Validação não executada | Execute opção [4] no `run.bat` |
