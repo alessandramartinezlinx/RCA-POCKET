@@ -251,6 +251,19 @@ COLORS_ACAO = {
     "Remediação": "#E64A19",
 }
 
+# Configuração para permitir download de imagens dos gráficos
+PLOTLY_CONFIG = {
+    "displaylogo": False,
+    "modeBarButtonsToAdd": ["toImage"],
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "rca_pocket_grafico",
+        "height": 600,
+        "width": 1200,
+        "scale": 2
+    }
+}
+
 
 # =============================================================================
 # SIDEBAR: FILTROS
@@ -453,9 +466,28 @@ def render_kpis(dff: pd.DataFrame, df_acomp: pd.DataFrame):
 def chart_tipo_erro(dff: pd.DataFrame) -> go.Figure:
     col = "tipo_erro_efetivo"
     if col not in dff.columns or len(dff) == 0:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de 'Tipo de Erro'<br>Verifique se as colunas 'Tipo Erro (Auto)' ou 'Tipo Erro (Manual)' estão preenchidas",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Incidências por Tipo de Erro", height=300,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
 
-    counts = dff[col].value_counts().reset_index()
+    counts = dff[col].dropna().value_counts().reset_index()
+    if counts.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Nenhum tipo de erro classificado<br>Preencha as colunas de tipo de erro no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Incidências por Tipo de Erro", height=300,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
+    
     counts.columns = ["Tipo de Erro", "Qtd"]
     counts = counts.sort_values("Qtd", ascending=True)
     colors = [COLORS_TIPO.get(t, "#BDBDBD") for t in counts["Tipo de Erro"]]
@@ -464,12 +496,13 @@ def chart_tipo_erro(dff: pd.DataFrame) -> go.Figure:
         x=counts["Qtd"], y=counts["Tipo de Erro"],
         orientation="h", marker_color=colors,
         text=counts["Qtd"], textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Quantidade: %{x}<extra></extra>",
     ))
     fig.update_layout(
         title="Incidências por Tipo de Erro", height=300,
         margin=dict(l=10, r=30, t=40, b=10),
         showlegend=False, plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE"),
+        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
     )
     return fig
 
@@ -477,22 +510,39 @@ def chart_tipo_erro(dff: pd.DataFrame) -> go.Figure:
 def chart_ajuste_realizado(dff: pd.DataFrame) -> go.Figure:
     col = "ajuste_realizado"
     if col not in dff.columns:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Coluna 'Tipo de Ajuste' não encontrada",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Índice por Tipo de Ajuste", height=300,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
 
     counts = dff[col].dropna().astype(str).str.strip()
     counts = counts[counts.ne("") & counts.ne("nan")].value_counts().reset_index()
     if counts.empty:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem ajustes classificados<br>Preencha a coluna 'Tipo de Ajuste' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Índice por Tipo de Ajuste", height=300,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
     counts.columns = ["Ajuste", "Qtd"]
 
     fig = go.Figure(go.Pie(
         labels=counts["Ajuste"], values=counts["Qtd"], hole=0.55,
         textinfo="percent+label", textfont_size=12,
+        hovertemplate="<b>%{label}</b><br>Quantidade: %{value}<br>Percentual: %{percent}<extra></extra>",
     ))
     fig.update_layout(
         title="Índice por Tipo de Ajuste", height=300,
         margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, title="Tipo de Ajuste"),
         annotations=[dict(
             text=f"<b>{counts['Qtd'].sum()}</b><br>issues",
             x=0.5, y=0.5, font_size=14, showarrow=False,
@@ -504,9 +554,28 @@ def chart_ajuste_realizado(dff: pd.DataFrame) -> go.Figure:
 def chart_por_area(dff: pd.DataFrame) -> go.Figure:
     col = "area"
     if col not in dff.columns or len(dff) == 0:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de 'Área'<br>Preencha a coluna 'Área' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Incidências por Área", height=280,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
 
-    counts = dff[col].value_counts().reset_index()
+    counts = dff[col].dropna().value_counts().reset_index()
+    if counts.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Nenhuma área classificada<br>Preencha a coluna 'Área' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Incidências por Área", height=280,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
+    
     counts.columns = ["Área", "Qtd"]
     counts = counts.sort_values("Qtd", ascending=True)
 
@@ -514,12 +583,13 @@ def chart_por_area(dff: pd.DataFrame) -> go.Figure:
         x=counts["Qtd"], y=counts["Área"],
         orientation="h", marker_color="#2E75B6",
         text=counts["Qtd"], textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Issues: %{x}<extra></extra>",
     ))
     fig.update_layout(
         title="Incidências por Área", height=280,
         margin=dict(l=10, r=30, t=40, b=10),
         showlegend=False, plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE"),
+        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
     )
     return fig
 
@@ -527,9 +597,27 @@ def chart_por_area(dff: pd.DataFrame) -> go.Figure:
 def chart_tendencia(dff: pd.DataFrame, granularidade: str) -> go.Figure:
     col = "semana" if granularidade == "Semana" else "mes"
     if col not in dff.columns or len(dff) == 0:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados temporais<br>Verifique a coluna 'Data Criação' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title=f"Tendência de Issues por {granularidade}", height=300,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
 
     grouped = dff.groupby([col, "status"]).size().reset_index(name="Qtd")
+    if grouped.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de status no período selecionado",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title=f"Tendência de Issues por {granularidade}", height=300,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
 
     fig = px.line(
         grouped, x=col, y="Qtd", color="status",
@@ -543,33 +631,80 @@ def chart_tendencia(dff: pd.DataFrame, granularidade: str) -> go.Figure:
         yaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd"),
         legend=dict(title="Status", orientation="h", yanchor="bottom", y=-0.3),
     )
+    fig.update_traces(hovertemplate="<b>%{fullData.name}</b><br>Quantidade: %{y}<extra></extra>")
     return fig
 
 
 def chart_heatmap(dff: pd.DataFrame) -> go.Figure:
     if "area" not in dff.columns or "tipo_erro_efetivo" not in dff.columns or len(dff) == 0:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Dados insuficientes para heatmap<br>Preencha as colunas 'Área' e 'Tipo de Erro'",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Concentração: Área × Tipo de Erro", height=250,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
 
-    pivot = dff.groupby(["area", "tipo_erro_efetivo"]).size().unstack(fill_value=0)
+    # Filtra dados válidos
+    df_valid = dff.dropna(subset=["area", "tipo_erro_efetivo"])
+    if df_valid.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem área ou tipo de erro classificados<br>Preencha os dados no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Concentração: Área × Tipo de Erro", height=250,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
+
+    pivot = df_valid.groupby(["area", "tipo_erro_efetivo"]).size().unstack(fill_value=0)
 
     fig = go.Figure(go.Heatmap(
         z=pivot.values, x=pivot.columns.tolist(), y=pivot.index.tolist(),
         colorscale="Blues", text=pivot.values,
         texttemplate="%{text}", textfont={"size": 12}, hoverongaps=False,
+        hovertemplate="<b>%{y}</b> × <b>%{x}</b><br>Issues: %{z}<extra></extra>",
+        colorbar=dict(title="Qtd Issues"),
     ))
     fig.update_layout(
         title="Concentração: Área × Tipo de Erro",
         height=max(250, len(pivot.index) * 60 + 80),
         margin=dict(l=10, r=10, t=40, b=10),
+        xaxis=dict(title="Tipo de Erro"),
+        yaxis=dict(title="Área"),
     )
     return fig
 
 
 def chart_prioridade_por_area(dff: pd.DataFrame) -> go.Figure:
     if "area" not in dff.columns or "prioridade" not in dff.columns or len(dff) == 0:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Dados insuficientes<br>Preencha 'Área' e 'Prioridade'",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Prioridades por Área", height=280,
+                         margin=dict(l=10, r=10, t=40, b=60))
+        return fig
 
-    pivot = dff.groupby(["area", "prioridade"]).size().unstack(fill_value=0)
+    # Filtra dados válidos
+    df_valid = dff.dropna(subset=["area", "prioridade"])
+    if df_valid.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem área ou prioridade classificadas",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Prioridades por Área", height=280,
+                         margin=dict(l=10, r=10, t=40, b=60))
+        return fig
+
+    pivot = df_valid.groupby(["area", "prioridade"]).size().unstack(fill_value=0)
     order = [p for p in ["Crítica", "Alta", "Média", "Baixa"] if p in pivot.columns]
     pivot = pivot[order] if order else pivot
 
@@ -578,14 +713,16 @@ def chart_prioridade_por_area(dff: pd.DataFrame) -> go.Figure:
         fig.add_trace(go.Bar(
             name=prio, x=pivot.index.tolist(), y=pivot[prio].tolist(),
             marker_color=COLORS_PRIO.get(prio, "#BDBDBD"),
+            hovertemplate=f"<b>{prio}</b><br>%{{x}}<br>Issues: %{{y}}<extra></extra>",
         ))
 
     fig.update_layout(
         barmode="stack", title="Prioridades por Área", height=280,
         margin=dict(l=10, r=10, t=40, b=60),
         plot_bgcolor="white",
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title=""),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.4),
+        xaxis=dict(title="Área"),
+        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        legend=dict(title="Prioridade", orientation="h", yanchor="bottom", y=-0.4),
     )
     return fig
 
@@ -593,7 +730,17 @@ def chart_prioridade_por_area(dff: pd.DataFrame) -> go.Figure:
 def chart_pendencias_por_area(df_acomp: pd.DataFrame) -> go.Figure:
     """Barras horizontais: pendências (sem data_conclusao) agrupadas por Área."""
     if df_acomp.empty or "area" not in df_acomp.columns:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de acompanhamento<br>Adicione ações na aba '🗂️ Acompanhamento Issue'",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(
+            title="Pendências por Área (Acompanhamento)", height=280,
+            margin=dict(l=10, r=10, t=40, b=10)
+        )
+        return fig
 
     # Pendênte = sem data de conclusão ou data NaT/vazia
     if "data_conclusao" in df_acomp.columns:
@@ -602,9 +749,15 @@ def chart_pendencias_por_area(df_acomp: pd.DataFrame) -> go.Figure:
         pendentes = df_acomp[df_acomp["status_acao"].astype(str).str.strip().ne("Concluído")]
     if pendentes.empty:
         fig = go.Figure()
-        fig.add_annotation(text="Sem pendências abertas", x=0.5, y=0.5,
-                           showarrow=False, font_size=14)
-        fig.update_layout(title="Pendências por Área", height=280)
+        fig.add_annotation(
+            text="✅ Sem pendências abertas<br>Todas as ações foram concluídas!",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#43A047",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(
+            title="Pendências por Área (Acompanhamento)", height=280,
+            margin=dict(l=10, r=10, t=40, b=10)
+        )
         return fig
 
     counts = (
@@ -622,12 +775,14 @@ def chart_pendencias_por_area(df_acomp: pd.DataFrame) -> go.Figure:
         orientation="h",
         marker_color="#EF5350",
         text=counts["Pendências"], textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Pendências: %{x}<extra></extra>",
     ))
     fig.update_layout(
         title="Pendências por Área (Acompanhamento)", height=280,
         margin=dict(l=10, r=10, t=40, b=10),
         plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Pendências"),
+        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        yaxis=dict(title="Área"),
         showlegend=False,
     )
     return fig
@@ -640,7 +795,17 @@ def chart_solucoes(dff: pd.DataFrame, granularidade: str) -> go.Figure:
     col_res   = "problema_resolvido"
 
     if col_data not in dff.columns or col_res not in dff.columns or dff.empty:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Dados insuficientes<br>Verifique colunas 'Data Criação' e 'Problema Resolvido?'",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(
+            title="Acompanhamento por Solução", height=300,
+            margin=dict(l=10, r=10, t=40, b=10)
+        )
+        return fig
 
     dfr = dff[[col_data, col_res]].copy()
     dfr[col_data] = pd.to_datetime(dfr[col_data], errors="coerce")
@@ -710,7 +875,15 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
     """Barras: quantidade de erros (issues) por Time (coluna H da aba Dados)."""
     col = "time"
     if col not in dff.columns or dff.empty:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de 'Time'<br>Preencha a coluna 'Time' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Erros por Time", height=280,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
 
     counts = (
         dff[col].dropna().astype(str).str.strip()
@@ -718,6 +891,17 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
         .value_counts()
         .reset_index()
     )
+    if counts.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Nenhum time classificado<br>Preencha a coluna 'Time' no Excel",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Erros por Time", height=280,
+                         margin=dict(l=10, r=30, t=40, b=10))
+        return fig
+    
     counts.columns = ["Time", "Issues"]
     counts = counts.sort_values("Issues", ascending=True)
 
@@ -726,12 +910,13 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
         orientation="h",
         marker_color="#5C6BC0",
         text=counts["Issues"], textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Issues: %{x}<extra></extra>",
     ))
     fig.update_layout(
-        title="Erros por Time (Aba Dados)", height=280,
+        title="Erros por Time", height=280,
         margin=dict(l=10, r=30, t=40, b=10),
         plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title=""),
+        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
         showlegend=False,
     )
     return fig
@@ -739,7 +924,15 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
 
 def chart_acompanhamento_status(df_acomp: pd.DataFrame) -> go.Figure:
     if "status_acao" not in df_acomp.columns or df_acomp.empty:
-        return go.Figure()
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem dados de acompanhamento<br>Adicione issues na aba '🗂️ Acompanhamento Issue'",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Status do Acompanhamento", height=280,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
 
     status_order  = ["Análise", "Andamento", "Bloqueado", "Concluído"]
     colors_status = {
@@ -750,6 +943,17 @@ def chart_acompanhamento_status(df_acomp: pd.DataFrame) -> go.Figure:
     }
 
     counts = df_acomp["status_acao"].value_counts().reset_index()
+    if counts.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="📊 Sem status de ação definido",
+            x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
+            xref="paper", yref="paper"
+        )
+        fig.update_layout(title="Status do Acompanhamento", height=280,
+                         margin=dict(l=10, r=10, t=40, b=10))
+        return fig
+    
     counts.columns = ["Status", "Qtd"]
     counts["Status"] = pd.Categorical(counts["Status"], categories=status_order, ordered=True)
     counts = counts.sort_values("Status")
@@ -758,12 +962,14 @@ def chart_acompanhamento_status(df_acomp: pd.DataFrame) -> go.Figure:
     fig = go.Figure(go.Bar(
         x=counts["Status"], y=counts["Qtd"],
         marker_color=colors, text=counts["Qtd"], textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Ações: %{y}<extra></extra>",
     ))
     fig.update_layout(
         title="Status do Acompanhamento", height=280,
         margin=dict(l=10, r=10, t=40, b=10),
         plot_bgcolor="white",
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title=""),
+        xaxis=dict(title="Status da Ação"),
+        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
         showlegend=False,
     )
     return fig
@@ -864,37 +1070,104 @@ def main():
     # Linha 1: Tipo de Erro + Ajuste Realizado
     col1, col2 = st.columns([3, 2])
     with col1:
-        st.plotly_chart(chart_tipo_erro(dff), use_container_width=True, key="chart_tipo_erro")
+        st.plotly_chart(chart_tipo_erro(dff), use_container_width=True, key="chart_tipo_erro", config=PLOTLY_CONFIG)
     with col2:
-        st.plotly_chart(chart_ajuste_realizado(dff), use_container_width=True, key="chart_ajuste")
+        st.plotly_chart(chart_ajuste_realizado(dff), use_container_width=True, key="chart_ajuste", config=PLOTLY_CONFIG)
 
     # Linha 2: Por Área | Pendências por Área | Erros por Time
     col3, col4, col5 = st.columns([2, 2, 1])
     with col3:
-        st.plotly_chart(chart_por_area(dff), use_container_width=True, key="chart_por_area")
+        st.plotly_chart(chart_por_area(dff), use_container_width=True, key="chart_por_area", config=PLOTLY_CONFIG)
     with col4:
-        st.plotly_chart(chart_pendencias_por_area(df_acomp_filtered), use_container_width=True, key="chart_pendencias_area")
+        st.plotly_chart(chart_pendencias_por_area(df_acomp_filtered), use_container_width=True, key="chart_pendencias_area", config=PLOTLY_CONFIG)
     with col5:
-        st.plotly_chart(chart_erros_por_time(dff), use_container_width=True, key="chart_erros_time")
+        st.plotly_chart(chart_erros_por_time(dff), use_container_width=True, key="chart_erros_time", config=PLOTLY_CONFIG)
 
     # Linha 3: Tendência Temporal + Acompanhamento por Solução
     col_tend, col_sol = st.columns([3, 2])
     with col_tend:
-        st.plotly_chart(chart_tendencia(dff, filters["granularidade"]), use_container_width=True, key="chart_tendencia")
+        st.plotly_chart(chart_tendencia(dff, filters["granularidade"]), use_container_width=True, key="chart_tendencia", config=PLOTLY_CONFIG)
     with col_sol:
-        st.plotly_chart(chart_solucoes(dff, filters["granularidade"]), use_container_width=True, key="chart_solucoes")
+        st.plotly_chart(chart_solucoes(dff, filters["granularidade"]), use_container_width=True, key="chart_solucoes", config=PLOTLY_CONFIG)
 
     # Linha 4: Heatmap + Status do Acompanhamento
     col5, col6 = st.columns([3, 2])
     with col5:
-        st.plotly_chart(chart_heatmap(dff), use_container_width=True, key="chart_heatmap")
+        st.plotly_chart(chart_heatmap(dff), use_container_width=True, key="chart_heatmap", config=PLOTLY_CONFIG)
     with col6:
-        st.plotly_chart(chart_acompanhamento_status(df_acomp_filtered), use_container_width=True, key="chart_acomp_status")
+        st.plotly_chart(chart_acompanhamento_status(df_acomp_filtered), use_container_width=True, key="chart_acomp_status", config=PLOTLY_CONFIG)
 
     st.markdown("---")
 
     # Tabela detalhada
     render_detail_table(dff)
+
+    # Seção de Compartilhamento
+    st.markdown("---")
+    st.markdown("### 📤 Compartilhamento")
+    
+    col_share1, col_share2, col_share3 = st.columns([1, 1, 2])
+    
+    with col_share1:
+        # Botão para baixar Excel
+        excel_path = Path(config["excel"]["arquivo_saida"])
+        if excel_path.exists():
+            with open(excel_path, "rb") as f:
+                excel_data = f.read()
+            st.download_button(
+                "📥 Baixar Excel Completo",
+                data=excel_data,
+                file_name="RCA_Pocket.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Baixe o arquivo Excel com todas as abas e dados"
+            )
+        else:
+            st.info("📊 Excel não encontrado")
+    
+    with col_share2:
+        # Botão para exportar dados filtrados
+        if len(dff) > 0:
+            # Cria Excel filtrado apenas com dados visíveis
+            from io import BytesIO
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                dff.to_excel(writer, sheet_name='Dados Filtrados', index=False)
+                if not df_acomp_filtered.empty:
+                    df_acomp_filtered.to_excel(writer, sheet_name='Acompanhamento', index=False)
+            output.seek(0)
+            
+            st.download_button(
+                "📊 Baixar Dados Filtrados",
+                data=output.getvalue(),
+                file_name=f"RCA_Filtrado_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Baixe apenas os dados filtrados em Excel"
+            )
+    
+    with col_share3:
+        # Instruções de compartilhamento
+        with st.expander("ℹ️ Como compartilhar o dashboard?", expanded=False):
+            st.markdown("""
+            **Opções para compartilhar:**
+            
+            **1. Localmente (mesma rede):**
+            - Execute: `streamlit run dashboard.py --server.address 0.0.0.0`
+            - Compartilhe o IP da sua máquina + porta (ex: http://192.168.1.10:8501)
+            
+            **2. Streamlit Cloud (gratuito):**
+            - Suba o projeto para GitHub
+            - Acesse [share.streamlit.io](https://share.streamlit.io)
+            - Conecte o repositório e faça deploy
+            - Compartilhe o link público gerado
+            
+            **3. Enviar arquivos:**
+            - Use os botões ao lado para baixar Excel/CSV
+            - Compartilhe por e-mail ou drive
+            
+            **4. Capturas de tela:**
+            - Use a ferramenta de captura do Windows (Win + Shift + S)
+            - Ou tire prints dos gráficos específicos
+            """)
 
     # Rodapé
     st.markdown("---")

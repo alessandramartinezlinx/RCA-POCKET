@@ -1,0 +1,48 @@
+# ======================================================================
+# RCA Pocket - Arquivo de Configuração (EXEMPLO)
+# ======================================================================
+# 
+# INSTRUÇÕES:
+# 1. Copie este arquivo para: rca_config.yaml
+# 2. Preencha com suas credenciais reais
+# 3. NUNCA commit rca_config.yaml no Git (já está no .gitignore)
+#
+# ======================================================================
+
+jira:
+  # URL do seu Jira (Atlassian Cloud ou Server)
+  url: "https://seu-jira.atlassian.net"
+  
+  # E-mail da conta Jira
+  email: "seu-email@empresa.com"
+  
+  # Token de API do Jira
+  # Gere em: https://id.atlassian.com/manage-profile/security/api-tokens
+  api_token: "SEU_TOKEN_AQUI"
+  
+  # JQL para buscar issues (ajuste conforme necessário)
+  jql: "project = MODAJOI AND issuetype = Bug AND created >= -90d"
+  
+  # Campos customizados (ajuste IDs conforme seu Jira)
+  custom_fields:
+    tipo_erro: "customfield_10050"
+    acao_realizada: "customfield_10051"
+    analise_causa: "customfield_10052"
+
+excel:
+  # Nome do arquivo Excel de saída
+  arquivo_saida: "RCA_Pocket.xlsx"
+
+cache:
+  # Arquivo de cache de issues
+  arquivo_cache: "data/issues_cache.json"
+  
+  # Arquivo com timestamp da última sincronização
+  arquivo_ultima_sync: "data/last_sync.txt"
+
+github:
+  # Token GitHub para validação de TAs (opcional)
+  token: ""
+  
+  # Repositório para buscar TAs
+  repo: "sua-empresa/seu-repo"
