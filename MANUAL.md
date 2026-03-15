@@ -353,4 +353,30 @@ Para ativar token real: defina `JIRA_API_TOKEN` como variável de ambiente ou pr
 | Issues não aparecem no período | Cache desatualizado | Clique 🔄 Atualizar no dashboard ou reexecute `generate_excel.py` |
 | Tipo de erro errado | Keywords não mapeadas | Adicione keywords na seção `tipos_erro:` do YAML |
 | Validação de TA falha | Token GitHub ausente | Configure `GITHUB_TOKEN` (veja seção 7.3) |
-| Coluna "Possui TA" vazia | Validação não executada | Execute opção [4] no `run.bat` |
+| Coluna "Possui TA" vazia | Validação não executada | Execute opção [2] no `run.bat` (gerar Excel inclui TAs) |
+
+---
+
+## 10. Dashboard Online (Streamlit Cloud)
+
+O dashboard está publicado em: **https://rca-pocket-microvix.streamlit.app/**
+
+O Streamlit Cloud faz deploy automático a partir do repositório GitHub. Sempre que você fizer push na branch `main`, o dashboard online é atualizado.
+
+### Atualizar dados no dashboard online
+
+Após sincronizar o Jira e gerar o Excel localmente, faça push da planilha atualizada:
+
+```powershell
+git add RCA_Pocket.xlsx
+git commit -m "atualiza dados"
+git push
+```
+
+O Streamlit Cloud detecta o push e refaz o deploy automaticamente em alguns minutos.
+
+### Observações
+
+- O arquivo `RCA_Pocket.xlsx` precisa estar versionado no repositório (não pode estar no `.gitignore`)
+- O `playwright` **não** é instalado no Streamlit Cloud — a sincronização com o Jira só funciona localmente
+- Se o Excel não estiver no repo, o dashboard online exibirá dados mock de demonstração
