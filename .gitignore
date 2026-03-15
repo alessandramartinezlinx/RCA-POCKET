@@ -14,8 +14,7 @@ build/
 venv/
 env/
 
-# Saídas geradas (não versionar o Excel nem o cache)
-RCA_Pocket.xlsx
+# Cache e dados temporários (não versionar)
 issues_cache.json
 data/
 
