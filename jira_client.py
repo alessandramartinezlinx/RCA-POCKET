@@ -861,6 +861,50 @@ def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
     }
 
 
+def _clean_jira_wiki_markup(text: str) -> str:
+    """Remove formatação wiki/markup do Jira de um texto, preservando newlines."""
+    if not text:
+        return ""
+    import re
+    # Extrai títulos de paineis: {panel:title=TITULO|...} → TITULO
+    text = re.sub(r'\{panel:title=([^|}]*)[^}]*\}', r'\1', text)
+    # Remove blocos {panel} (abertura sem title ou fechamento)
+    text = re.sub(r'\{panel\}', '', text)
+    # Remove blocos {code:...} e {code}
+    text = re.sub(r'\{code(?::[^}]*)?\}', '', text)
+    # Remove blocos {noformat}{noformat}
+    text = re.sub(r'\{noformat\}', '', text)
+    # Remove {color:...}{color}
+    text = re.sub(r'\{color(?::[^}]*)?\}', '', text)
+    # Remove {quote}{quote}
+    text = re.sub(r'\{quote\}', '', text)
+    # Remove negrito/itálico wiki: {*}texto{*}
+    text = re.sub(r'\{\*\}', '', text)
+    # Remove links wiki: [texto|url] → texto (ANTES de remover [ ])
+    text = re.sub(r'\[([^|\]]*)\|[^\]]+\]', r'\1', text)
+    # Remove referências a imagens: !image-xxxxx.png!
+    text = re.sub(r'!image-[^!]*!', '', text)
+    # Remove formatação markdown/wiki (* _ [ ] ~)
+    text = re.sub(r'[\*_\[\]~]', '', text)
+    # Remove \xa0 (non-breaking space)
+    text = text.replace('\xa0', ' ')
+    # Colapsa múltiplos espaços em cada linha (preserva newlines)
+    lines = text.splitlines()
+    lines = [' '.join(line.split()) for line in lines]
+    # Remove linhas vazias consecutivas
+    result = []
+    prev_empty = False
+    for line in lines:
+        if not line.strip():
+            if not prev_empty:
+                result.append('')
+            prev_empty = True
+        else:
+            result.append(line)
+            prev_empty = False
+    return '\n'.join(result).strip()
+
+
 def _extract_sintoma(description: str) -> str:
     """
     Extrai o texto após 'Sintoma:' da descrição do Jira.
@@ -878,11 +922,8 @@ def _extract_sintoma(description: str) -> str:
                       re.IGNORECASE | re.DOTALL)
     
     if match:
-        sintoma = match.group(1).strip()
-        # Remove formatação Markdown/Wiki se houver (* _ [ ])
-        sintoma = re.sub(r'[\*_\[\]]', '', sintoma)
-        # Remove quebras de linha extras
-        sintoma = ' '.join(sintoma.split())
+        sintoma = _clean_jira_wiki_markup(match.group(1))
+        sintoma = ' '.join(sintoma.split())  # colapsa em uma linha
         # Limita a 200 caracteres para não poluir a planilha
         if len(sintoma) > 200:
             sintoma = sintoma[:197] + "..."
@@ -929,11 +970,8 @@ def _extract_causa_raiz(description: str) -> str:
     for pattern in patterns:
         match = re.search(pattern, description, re.IGNORECASE | re.DOTALL)
         if match:
-            causa = match.group(1).strip()
-            # Remove formatação markdown/wiki
-            causa = re.sub(r'[\*_\[\]]', '', causa)
-            # Remove quebras de linha extras
-            causa = ' '.join(causa.split())
+            causa = _clean_jira_wiki_markup(match.group(1))
+            causa = ' '.join(causa.split())  # colapsa em uma linha
             # Limita tamanho
             if len(causa) > 300:
                 causa = causa[:297] + "..."
@@ -945,170 +983,177 @@ def _extract_causa_raiz(description: str) -> str:
 def _extract_acao_realizada(comments_list: list, resolution_name: str = "") -> str:
     """
     Extrai a Ação Realizada dos comentários do Jira.
-    Busca por "Solução:" nos comentários e verifica se houve alteração no código fonte.
-    Se não encontrar, busca em "1 - Conclusão:" ou retorna resolution_name.
+    
+    Ordem de prioridade:
+    1. "Solução:" no comentário de conclusão (seção 1)
+    2. Texto completo da seção "1 - Conclusão:" (excluindo checklists)
+    3. Último comentário significativo (não-checklist, não-imagem)
+    4. resolution_name como fallback
     """
     if not comments_list:
         return resolution_name
     
     import re
     
-    # Primeiro tenta encontrar "Solução:" em qualquer comentário
-    solucao_text = ""
+    # Detecta alteração de código em qualquer comentário
     houve_alteracao_codigo = False
-    
     for comment in comments_list:
-        body = str(comment.get("body") or "").strip()
-        
-        # Procura por "Solução:"
-        match_solucao = re.search(r'Solu[çc][aã]o\s*:\s*([^\n]+)', body, re.IGNORECASE)
-        if match_solucao and not solucao_text:
-            solucao_text = match_solucao.group(1).strip()
-        
-        # Verifica se menciona alteração de código
-        if re.search(r'altera[çc][aã]o\s+(no\s+)?c[óo]digo|modifica[çc][aã]o\s+(no\s+)?c[óo]digo|'
-                     r'ajuste\s+(no\s+)?c[óo]digo|corre[çc][aã]o\s+(no\s+)?c[óo]digo|'
-                     r'altera[çc][aã]o\s+(de\s+)?fonte|corre[çc][aã]o\s+(de\s+)?c[óo]digo|'
-                     r'code\s+change|source\s+code', body, re.IGNORECASE):
+        body = str(comment.get("body") or "")
+        if re.search(r'altera[çc][aã]o\s+(no\s+|de\s+)?(c[óo]digo|fonte)|'
+                     r'ajuste\s+(no\s+)?c[óo]digo|corre[çc][aã]o\s+(no\s+|de\s+)?c[óo]digo',
+                     body, re.IGNORECASE):
             houve_alteracao_codigo = True
+            break
     
-    # Se encontrou solução, usa ela
-    if solucao_text:
-        acao = solucao_text
-        # Remove formatação
-        acao = re.sub(r'[\*_\[\]]', '', acao)
-        # Remove quebras de linha extras
-        acao = ' '.join(acao.split())
-        
-        # Adiciona indicação de alteração de código se detectado
-        if houve_alteracao_codigo:
-            if "alteração" not in acao.lower() and "código" not in acao.lower():
-                acao = f"[Alteração no código] {acao}"
-        
-        # Limita tamanho
-        if len(acao) > 400:
-            acao = acao[:397] + "..."
-        return acao
-    
-    # Se não encontrou "Solução:", tenta buscar em "1 - Conclusão:"
+    # 1. Busca no comentário de conclusão
     conclusao_comment = _find_conclusao_comment(comments_list)
     if conclusao_comment:
-        # Padrões para identificar ação em conclusão
-        patterns = [
-            r'A[çc][aã]o\s+[Rr]ealizada\s*:\s*([^\n]+)',
-            r'A[çc][aã]o\s*:\s*([^\n]+)',
-            r'Corre[çc][aã]o\s*:\s*([^\n]+)',
-            r'Script\s*:\s*([^\n]+)',
-            r'Procedimento\s*:\s*([^\n]+)',
-        ]
+        conclusao_clean = _clean_jira_wiki_markup(conclusao_comment)
         
-        for pattern in patterns:
-            match = re.search(pattern, conclusao_comment, re.IGNORECASE)
-            if match:
-                acao = match.group(1).strip()
-                # Remove formatação
-                acao = re.sub(r'[\*_\[\]]', '', acao)
-                # Remove quebras de linha extras
-                acao = ' '.join(acao.split())
-                
-                # Adiciona indicação de alteração de código se detectado
-                if houve_alteracao_codigo:
-                    if "alteração" not in acao.lower() and "código" not in acao.lower():
-                        acao = f"[Alteração no código] {acao}"
-                
-                # Limita tamanho
-                if len(acao) > 400:
-                    acao = acao[:397] + "..."
-                # Limita tamanho
-                if len(acao) > 400:
-                    acao = acao[:397] + "..."
-                return acao
+        # Isola seção 1 (antes da seção 2)
+        match_secao1 = re.search(
+            r'1\s*-\s*Conclus[aã]o\s*:?\s*(.+?)(?=\n\s*2\s*-\s|$)',
+            conclusao_clean,
+            re.IGNORECASE | re.DOTALL,
+        )
+        secao1_text = match_secao1.group(1).strip() if match_secao1 else conclusao_clean
         
-        # Se não encontrou campos específicos em conclusão, pega todo o texto
-        match = re.search(r'1\s*-\s*Conclus[aã]o\s*:\s*(.+)', conclusao_comment, re.IGNORECASE | re.DOTALL)
-        if match:
-            texto = match.group(1).strip()
-            # Remove formatação
-            texto = re.sub(r'[\*_\[\]]', '', texto)
-            # Remove quebras de linha extras
-            texto = ' '.join(texto.split())
-            
-            # Adiciona indicação de alteração de código se detectado
-            if houve_alteracao_codigo:
-                if "alteração" not in texto.lower() and "código" not in texto.lower():
-                    texto = f"[Alteração no código] {texto}"
-            
-            # Limita tamanho
-            if len(texto) > 400:
-                texto = texto[:397] + "..."
-            return texto
+        # Busca "Solução:" dentro da seção 1
+        match_solucao = re.search(
+            r'Solu[çc][aã]o\s*:\s*(.+?)(?=\n\s*(?:Causa|Impacto|Sintoma)\s*:|$)',
+            secao1_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if match_solucao:
+            acao = ' '.join(match_solucao.group(1).split())
+            if acao and len(acao) > 5:  # evita matches espúrios
+                return _format_acao(acao, houve_alteracao_codigo)
+        
+        # Busca "Causa:" + contexto se não tem "Solução:"
+        match_causa = re.search(
+            r'Causa\s*:\s*(.+?)(?=\n\s*(?:Solu[çc]|Impacto|Sintoma)\s*:|$)',
+            secao1_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        
+        # Se tem Causa mas não Solução, usa a seção 1 inteira
+        secao1_oneline = ' '.join(secao1_text.split())
+        # Remove checklists (Sim/Não, x Sim, etc)
+        secao1_oneline = re.sub(r'\b(x\s+)?Sim\b|\bN[aã]o\b', '', secao1_oneline, flags=re.IGNORECASE)
+        secao1_oneline = re.sub(r'(seja aplicada|foi identificad|originou o problema)\?', '', secao1_oneline, flags=re.IGNORECASE)
+        secao1_oneline = ' '.join(secao1_oneline.split()).strip()
+        
+        if secao1_oneline and len(secao1_oneline) > 10:
+            return _format_acao(secao1_oneline, houve_alteracao_codigo)
     
-    # Fallback: usa resolution_name
+    # 2. Fallback: último comentário significativo
+    for comment in reversed(comments_list):
+        body_raw = str(comment.get("body") or "").strip()
+        if not body_raw:
+            continue
+        
+        body_clean = _clean_jira_wiki_markup(body_raw)
+        body_oneline = ' '.join(body_clean.split())
+        
+        # Ignora comentários que são basicamente imagens, links curtos, ou conclusão vazia
+        if len(body_oneline) < 10:
+            continue
+        if re.match(r'^!image-.*!$', body_oneline):
+            continue
+        
+        return _format_acao(body_oneline, houve_alteracao_codigo)
+    
+    # 3. Último fallback
     if houve_alteracao_codigo and resolution_name:
         return f"[Alteração no código] {resolution_name}"
-    
     return resolution_name
 
 
-def _extract_dev_responsavel(description: str) -> str:
+def _format_acao(acao: str, houve_alteracao: bool) -> str:
+    """Formata a ação realizada com limite de tamanho e indicador de alteração."""
+    if houve_alteracao:
+        if "alteração" not in acao.lower() and "código" not in acao.lower():
+            acao = f"[Alteração no código] {acao}"
+    if len(acao) > 400:
+        acao = acao[:397] + "..."
+    return acao
+
+
+def _extract_dev_responsavel(description: str, fields: dict = None, config: dict = None) -> str:
     """
-    Extrai o nome do Responsável Desenvolvimento da descrição.
-    Procura por padrão "Responsável Desenvolvimento:" ou "Responsável Dev:" ou "Dev Responsável:".
+    Extrai o nome do Responsável Desenvolvimento.
+    1. Campo configurado (customfield_14100)
+    2. Fallback: qualquer customfield de pessoa
+    3. Fallback: assignee
+    4. Fallback: descrição
     """
-    if not description:
-        return ""
-    
     import re
-    patterns = [
-        r'Respons[aá]vel\s+Desenvolvimento\s*:\s*([^\n]+)',
-        r'Respons[aá]vel\s+Dev\s*:\s*([^\n]+)',
-        r'Dev\s+Respons[aá]vel\s*:\s*([^\n]+)',
-    ]
     
-    for pattern in patterns:
-        match = re.search(pattern, description, re.IGNORECASE)
-        if match:
-            nome = match.group(1).strip()
-            # Remove formatação markdown/wiki
-            nome = re.sub(r'[\*_\[\]]', '', nome)
-            # Remove quebras de linha extras
-            nome = ' '.join(nome.split())
-            # Limita tamanho (nome de pessoa geralmente é curto)
-            if len(nome) > 100:
-                nome = nome[:97] + "..."
-            return nome
+    if fields:
+        # 1. Campo configurado
+        dev_field = (config or {}).get("jira", {}).get("dev_responsavel_field", "customfield_14100")
+        v = fields.get(dev_field)
+        if isinstance(v, dict) and "displayName" in v:
+            return v["displayName"]
+        
+        # 2. Fallback: busca genérica em customfields de pessoa
+        person_fields = []
+        for k, val in sorted(fields.items()):
+            if (k.startswith("customfield_") and val and
+                isinstance(val, dict) and "displayName" in val and
+                k not in ("customfield_20506",)):
+                person_fields.append((k, val["displayName"]))
+        if person_fields:
+            return person_fields[0][1]
+        
+        # 3. Fallback: assignee
+        assignee = (fields.get("assignee") or {}).get("displayName", "")
+        if assignee:
+            return assignee
     
+    # 4. Fallback: descrição
+    if description:
+        for pat in [r'Respons[aá]vel\s+Desenvolvimento\s*:\s*([^\n]+)',
+                    r'Respons[aá]vel\s+Dev\s*:\s*([^\n]+)']:
+            m = re.search(pat, description, re.IGNORECASE)
+            if m:
+                return ' '.join(re.sub(r'[\*_\[\]]', '', m.group(1)).split())[:100]
     return ""
 
 
-def _extract_qa_responsavel(description: str) -> str:
+def _extract_qa_responsavel(description: str, fields: dict = None, config: dict = None) -> str:
     """
-    Extrai o nome do Responsável QA da descrição.
-    Procura por padrão "Responsável QA:" ou "QA Responsável:" ou "Responsável Testes:".
+    Extrai o nome do Responsável QA.
+    1. Campo configurado (customfield_14101)
+    2. Fallback: segundo customfield de pessoa
+    3. Fallback: descrição
     """
-    if not description:
-        return ""
-    
     import re
-    patterns = [
-        r'Respons[aá]vel\s+QA\s*:\s*([^\n]+)',
-        r'QA\s+Respons[aá]vel\s*:\s*([^\n]+)',
-        r'Respons[aá]vel\s+Testes\s*:\s*([^\n]+)',
-    ]
     
-    for pattern in patterns:
-        match = re.search(pattern, description, re.IGNORECASE)
-        if match:
-            nome = match.group(1).strip()
-            # Remove formatação markdown/wiki
-            nome = re.sub(r'[\*_\[\]]', '', nome)
-            # Remove quebras de linha extras
-            nome = ' '.join(nome.split())
-            # Limita tamanho (nome de pessoa geralmente é curto)
-            if len(nome) > 100:
-                nome = nome[:97] + "..."
-            return nome
+    if fields:
+        # 1. Campo configurado
+        qa_field = (config or {}).get("jira", {}).get("qa_responsavel_field", "customfield_14101")
+        v = fields.get(qa_field)
+        if isinstance(v, dict) and "displayName" in v:
+            return v["displayName"]
+        
+        # 2. Fallback: segundo customfield de pessoa
+        person_fields = []
+        for k, val in sorted(fields.items()):
+            if (k.startswith("customfield_") and val and
+                isinstance(val, dict) and "displayName" in val and
+                k not in ("customfield_20506",)):
+                person_fields.append((k, val["displayName"]))
+        if len(person_fields) >= 2:
+            return person_fields[1][1]
     
+    # 3. Fallback: descrição
+    if description:
+        for pat in [r'Respons[aá]vel\s+QA\s*:\s*([^\n]+)',
+                    r'QA\s+Respons[aá]vel\s*:\s*([^\n]+)']:
+            m = re.search(pat, description, re.IGNORECASE)
+            if m:
+                return ' '.join(re.sub(r'[\*_\[\]]', '', m.group(1)).split())[:100]
     return ""
 
 
@@ -1182,83 +1227,63 @@ def _extract_sla_dates(fields: dict, sla_field_name: str = None):
 
 def _extract_numero_caso_count(fields: dict, numero_caso_field: str = None) -> int:
     """
-    Extrai e conta a quantidade de links no campo "Número do Caso".
+    Conta a quantidade de "Número do Caso" vinculados à issue.
     
-    O campo pode conter:
-    - URLs (http://, https://)
-    - Chaves de issues do Jira (PROJETO-1234)
-    - Links markdown [texto](url)
+    O campo customfield_20506 é uma lista de strings (números de caso).
+    Se for string, tenta contar por URLs ou chaves de issue.
     
     Args:
         fields: Objeto fields da issue do Jira
-        numero_caso_field: Nome do campo customizado (ex: "customfield_10001")
+        numero_caso_field: Nome do campo customizado (ex: "customfield_20506")
                           Se None, tenta buscar automaticamente
     
     Returns:
-        Quantidade de links encontrados (int)
+        Quantidade de casos encontrados (int)
     """
     import re
     
-    texto_numero_caso = ""
+    valor = None
     
     # Se foi especificado um campo, tenta usar ele
     if numero_caso_field and numero_caso_field in fields:
         valor = fields.get(numero_caso_field)
-        if valor:
-            texto_numero_caso = str(valor)
     else:
-        # Busca automática: procura por campos que podem conter "Número do Caso"
-        # Tenta variações comuns de nomes
-        campos_possiveis = [
-            "Número do Caso", "Numero do Caso", "número do caso", "numero do caso",
-            "Número de Caso", "Numero de Caso", "Casos", "casos",
-            "Case Number", "case number", "Related Cases", "related cases"
-        ]
-        
-        # Primeiro tenta campos diretos
-        for campo in campos_possiveis:
-            if campo in fields and fields[campo]:
-                texto_numero_caso = str(fields[campo])
-                break
-        
-        # Se não encontrou, procura em campos customizados
-        if not texto_numero_caso:
-            for field_key, field_value in fields.items():
-                if field_key.startswith("customfield_") and field_value:
-                    # Verifica se o valor parece conter links ou chaves de issue
-                    valor_str = str(field_value)
-                    # Procura por padrões que indicam links ou chaves
-                    if re.search(r'https?://|[A-Z]+-\d+|\[.+?\]\(.+?\)', valor_str):
-                        texto_numero_caso = valor_str
+        # Busca automática em customfields
+        for field_key, field_value in fields.items():
+            if field_key.startswith("customfield_") and field_value:
+                # Se for lista de strings (padrão do campo Número do Caso)
+                if isinstance(field_value, list) and field_value and isinstance(field_value[0], str):
+                    # Verifica se parece ser números de caso (sequências numéricas)
+                    if all(re.match(r'^\d+$', str(v)) for v in field_value[:3]):
+                        valor = field_value
                         break
     
-    if not texto_numero_caso:
+    if valor is None:
         return 0
     
-    # Conta diferentes tipos de links
-    contador = 0
+    # Se for lista (caso padrão: customfield_20506 = ['05130974', '05268248', ...])
+    if isinstance(valor, list):
+        return len(valor)
     
-    # 1. URLs completas (http:// ou https://)
-    urls = re.findall(r'https?://[^\s\)]+', texto_numero_caso)
-    contador += len(urls)
+    # Se for string, tenta contar por separadores ou links
+    texto = str(valor)
+    if not texto.strip():
+        return 0
     
-    # 2. Chaves de issues do Jira (formato PROJETO-1234)
-    # Evita duplicatas se a URL já continha a chave
-    chaves = re.findall(r'\b[A-Z][A-Z0-9]+-\d+\b', texto_numero_caso)
-    # Remove chaves que já estão nas URLs
-    chaves_unicas = []
-    for chave in chaves:
-        ja_contado = False
-        for url in urls:
-            if chave in url:
-                ja_contado = True
-                break
-        if not ja_contado:
-            chaves_unicas.append(chave)
+    # Conta URLs
+    urls = re.findall(r'https?://[^\s\)]+', texto)
+    if urls:
+        return len(urls)
     
-    contador += len(chaves_unicas)
+    # Conta chaves de issue (PROJETO-1234)
+    chaves = re.findall(r'\b[A-Z][A-Z0-9]+-\d+\b', texto)
+    if chaves:
+        return len(chaves)
     
-    return contador
+    # Conta por separadores (vírgula, espaço, quebra de linha)
+    partes = re.split(r'[,;\n]+', texto)
+    partes = [p.strip() for p in partes if p.strip()]
+    return len(partes) if len(partes) > 1 else (1 if texto.strip() else 0)
 
 
 def normalize_issue(issue: dict, config: dict) -> dict:
@@ -1269,9 +1294,9 @@ def normalize_issue(issue: dict, config: dict) -> dict:
     description = fields.get("description") or ""
     sintoma = _extract_sintoma(description)
     
-    # Extrai Responsáveis Dev e QA da descrição
-    dev_responsavel = _extract_dev_responsavel(description)
-    qa_responsavel = _extract_qa_responsavel(description)
+    # Extrai Responsáveis Dev e QA (customfields de pessoa > descrição)
+    dev_responsavel = _extract_dev_responsavel(description, fields, config)
+    qa_responsavel = _extract_qa_responsavel(description, fields, config)
     
     # Se não encontrou Sintoma, usa o summary do Jira como fallback
     resumo_planilha = sintoma if sintoma else fields.get("summary", "")
@@ -1359,8 +1384,8 @@ def normalize_issue(issue: dict, config: dict) -> dict:
         "qa_secundario":         area_map["qa_secundario"],
         "dev_principal":         area_map["dev_principal"],
         "dev_secundario":        area_map["dev_secundario"],
-        "dev_responsavel_bug":   dev_responsavel,  # Extrai da descrição "Responsável Desenvolvimento:"
-        "qa_responsavel_bug":    qa_responsavel,   # Extrai da descrição "Responsável QA:"
+        "dev_responsavel_bug":   dev_responsavel,  # Customfield > assignee > descrição
+        "qa_responsavel_bug":    qa_responsavel,   # Customfield > descrição
         "link_jira":             f"{config['jira']['base_url']}/browse/{issue_key}",
         "qtd_vinculos":          qtd_vinculos,  # Quantidade de issuelinks
         "data_importacao":       datetime.now(),  # Data de importação

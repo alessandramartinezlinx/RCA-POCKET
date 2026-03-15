@@ -26,19 +26,16 @@ As issues agora são **automaticamente ordenadas** seguindo critérios de negóc
 
 📄 Detalhes completos em [`FUNCIONALIDADE_ORDENACAO.md`](FUNCIONALIDADE_ORDENACAO.md)
 
-### 🤖 Validação Automática de Testes Automatizados (TAs)
+### 🤖 Indexação de Testes Automatizados por Similaridade
 
-Nova integração com o **repositório Robot Framework** no GitHub para validar cobertura de testes automatizados:
+Nova integração com o **repositório Robot Framework** no GitHub para identificar testes automatizados relacionados às issues:
 
-- ✅ **Busca automática** no repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework)
-- 🔍 **Dupla estratégia**: busca por `MODAJOI-XXXXX` e tags `SHOP-JOI-XXXXX`
-- 📊 **Relatório de cobertura**: % de issues com/sem TA
-- 💾 **Cache inteligente**: evita requisições repetidas ao GitHub API
-- 🔄 **Atualização automática**: popula coluna "Possui TA" com Sim/Não
+- ✅ **Indexação automática** de test cases do [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework)
+- 🔍 **Matching por similaridade**: compara palavras-chave do resumo com nomes dos testes
+- 📊 **Preenchimento automático**: coluna "Possui TA" e "Arquivo TA" na planilha
+- 💾 **Cache inteligente**: índice válido por 7 dias em `data/ta_test_index.json`
 
-**Como usar**: Opção **[6]** no `run.bat` ou comando direto `python validar_tas_planilha.py`
-
-📄 Guia completo em [`VALIDACAO_TAS.md`](VALIDACAO_TAS.md)
+**Como usar**: A indexação acontece automaticamente ao gerar o Excel (opção **[2]** no `run.bat`).
 
 ---
 
@@ -248,135 +245,84 @@ Clique em **⬇️ Exportar CSV** para baixar os dados exibidos.
 ## 6. Fluxo completo de uso
 
 ```
-1. [Automático - Pipeline]  Jira client busca issues → salva em data/issues_cache.json
-                             (D+1, delta update, token via Key Vault)
+1. [Automático]           python sync_jira_browser.py
+                             → abre browser, login manual no Jira
+                             → extrai issues e salva em data/issues_cache.json
 
 2. [Manual ou agendado]     python generate_excel.py
                              → gera/atualiza RCA_Pocket.xlsx
+                             → indexa TAs automaticamente (requer GITHUB_TOKEN)
                              → dados manuais existentes são preservados
 
-3. [NOVO] Validar TAs       python validar_tas_planilha.py (ou run.bat opção [4])
-                             → busca testes no GitHub Robot Framework
-                             → atualiza coluna "Possui TA" automaticamente
-                             → gera relatório de cobertura
-
-4. [Time de QA]             Abre RCA_Pocket.xlsx
+3. [Time de QA]             Abre RCA_Pocket.xlsx
                              → preenche Ações (aba ✅) e 5 Whys (aba 🔍)
                              → corrige Tipo Erro Manual se necessário
                              → verifica coluna "Possui TA" para priorizar automação
 
-5. [Gesture / Reunião]      streamlit run dashboard.py
+4. [Gesture / Reunião]      streamlit run dashboard.py
                              → filtra por período, time, área
                              → exporta CSV para apresentação
 ```
 
 ---
 
-## 7. 🤖 Validação de Testes Automatizados (TAs)
+## 7. 🤖 Indexação de Testes Automatizados (TAs)
 
 ### 7.1 Visão Geral
 
-Integração com o **repositório Robot Framework** no GitHub para validar se as issues do RCA Pocket possuem cobertura de testes automatizados.
+Integração com o **repositório Robot Framework** no GitHub para identificar testes automatizados relacionados às issues por **similaridade de palavras-chave**.
 
 **Benefícios:**
 - Identifica **gaps de cobertura** (issues sem TA)
-- Prioriza criação de testes para bugs críticos
-- Gera **métricas de qualidade** (% issues com TA)
-- Valida rastreabilidade entre bugs e regressões
+- Matching inteligente por **palavras-chave do resumo** da issue
+- Cache de índice com validade de **7 dias**
+- Execução **automática** durante a geração do Excel
 
 ### 7.2 Como Funciona
 
-1. **Leitura**: Script lê todas as issues da coluna **Key** na planilha
-2. **Busca GitHub**: Para cada issue, busca no repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework):
-   - Menção direta: `MODAJOI-XXXXX` em arquivos `.robot`
-   - Tag Robot: `[Tags] SHOP-JOI-XXXXX` (padrão do time)
-   - Comentários: Referências em documentação
-3. **Atualização**: Preenche automaticamente:
-   - Coluna **R (Possui TA)**: "Sim" ou "Não"
-   - Coluna **S (Arquivo TA)**: Nome dos arquivos encontrados (ex: `Venda_Nfe.robot, Troca_Facil.robot (+1)`)
-4. **Relatório**: Exibe:
-   - % de cobertura total
-   - Lista de issues **com** TA (+ arquivos `.robot` encontrados)
-   - Lista de issues **sem** TA (sugestão de priorização)
+1. **Indexação**: O script `indexar_testes.py` busca arquivos `.robot` no GitHub e extrai nomes de test cases
+2. **Matching**: Para cada issue, extrai palavras-chave do resumo e compara com os nomes dos testes
+3. **Score**: Pontua matches exatos (3pts), parciais (1pt) e bônus de sistema/área (2pts)
+4. **Resultado**: Preenche automaticamente:
+   - Coluna **R (Possui TA)**: "Sim" ou vazio
+   - Coluna **S (Arquivo TA)**: Top 3 test cases mais relevantes
 
-### 7.3 Configuração (Primeira Vez)
+### 7.3 Configuração
 
-**Passo 1 - Criar Token GitHub:**
-```
-1. Acesse: https://github.com/settings/tokens
-2. Clique: "Generate new token (classic)"
-3. Marque: ☑ repo (read)
-4. Copie o token: ghp_xxxxxxxxxxxxx
-```
-
-**Passo 2 - Configurar Variável de Ambiente:**
+**Token GitHub (obrigatório):**
 ```powershell
-# PowerShell como Administrador (permanente)
+# Permanente (recomendado):
 [System.Environment]::SetEnvironmentVariable('GITHUB_TOKEN', 'ghp_seu_token', 'User')
 
-# Ou temporário (válido apenas na sessão atual)
+# Ou temporário:
 $env:GITHUB_TOKEN = "ghp_seu_token"
 ```
 
-**Passo 3 - Instalar Dependência:**
-```bash
-pip install PyGithub
-```
+**Gerar token:**
+1. Acesse: https://github.com/settings/tokens
+2. Clique: "Generate new token (classic)"
+3. Marque: ☑ repo (read)
+4. Copie o token gerado
 
 ### 7.4 Uso
 
-**Opção 1 - Via run.bat (recomendado):**
+A indexação de TAs acontece **automaticamente** ao gerar o Excel:
 ```batch
-run.bat
-# Escolha: [6] Validar Cobertura de TAs
+run.bat → Opção [2] Apenas Gerar/Atualizar Excel
 ```
 
-**Opção 2 - Comando direto:**
+Ou via comando direto:
 ```bash
-python validar_tas_planilha.py
+python generate_excel.py
 ```
 
-**Exemplo de Saída:**
-```
-🔍 VALIDAÇÃO DE TESTES AUTOMATIZADOS - RCA POCKET
+### 7.5 Cache
 
-📄 Lendo planilha RCA_Pocket.xlsx...
-  16 issue(s) encontrado(s)
-
-  Buscando TAs para MODAJOI-98445...
-    ✅ MODAJOI-98445: 2 TA(s) encontrado(s)
-  Buscando TAs para MODAJOI-99590...
-    ❌ MODAJOI-99590: Nenhum TA encontrado
-
-� Atualizando planilha...
-  ✅ Coluna R (Possui TA): Sim/Não
-  ✅ Coluna S (Arquivo TA): Nomes dos arquivos .robot
-  ✅ 3 issue(s) atualizado(s)
-
-�📊 RELATÓRIO DE COBERTURA
-Total: 16 issues
-  ✅ Com TA:  8 (50.0%)
-  ❌ Sem TA:  8 (50.0%)
-
-Issues COM teste:
-  MODAJOI-98445:
-    • Tests/ERP/Faturamento/Venda_Facil/Venda_Nfe.robot
-
-Issues SEM teste (priorizar):
-  • MODAJOI-99590
-  • MODAJOI-100041
-```
-
-### 7.5 Cache de Validações
-
-O sistema mantém cache em `data/ta_validation_cache.json` para:
-- ⚡ Evitar requisições repetidas ao GitHub
-- 💰 Economizar rate limit da API (5000/hora com token)
-- 🚀 Acelerar validações subsequentes
+O índice de test cases é salvo em `data/ta_test_index.json` com validade de 7 dias.
 
 **Limpar cache manualmente:**
 ```powershell
-Remove-Item data/ta_validation_cache.json
+Remove-Item data/ta_test_index.json
 ```
 
 ### 7.6 Resolução de Problemas
@@ -384,11 +330,8 @@ Remove-Item data/ta_validation_cache.json
 | Erro | Solução |
 |---|---|
 | "Token GitHub não configurado" | Configure `GITHUB_TOKEN` (veja seção 7.3) |
-| "API rate limit exceeded" | Aguarde 1 hora ou use token para aumentar limite |
+| TAs não encontrados | Verifique se o índice está atualizado (limpe o cache) |
 | "No module named 'github'" | Execute: `pip install PyGithub` |
-| Todos marcados como "Não" | Verifique se token tem permissão `repo` |
-
-📄 **Guia completo:** [`VALIDACAO_TAS.md`](VALIDACAO_TAS.md)
 
 ---
 

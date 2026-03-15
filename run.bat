@@ -39,39 +39,34 @@ echo Escolha uma opção:
 echo.
 echo   [1] Sincronizar Jira + Gerar Excel + Abrir Dashboard
 echo   [2] Apenas Gerar/Atualizar Excel
-echo   [3] Apenas Abrir Dashboard (usa dados do Excel existente)
-echo   [4] Validar Cobertura de TAs (busca GitHub Robot Framework)
-if not "%SHAREPOINT_URL%"=="" echo   [5] Abrir Excel Online (SharePoint)
+echo   [3] Apenas Abrir Dashboard
+if not "%SHAREPOINT_URL%"=="" echo   [4] Abrir Excel Online (SharePoint)
 echo   [0] Sair
 echo.
-echo Nota: O Dashboard sempre lê os dados atualizados do Excel automaticamente.
-echo       Se você editou campos manuais no Excel, basta abrir o Dashboard (opção 3).
+echo Nota: A opção 1 abre o browser para login manual no Jira.
+echo       A opção 2 também indexa TAs automaticamente (requer GITHUB_TOKEN).
+echo       Se editou campos no Excel, basta reabrir o Dashboard (opção 3).
 echo.
 set /p OPCAO=Opção: 
 
 if "%OPCAO%"=="1" goto SYNC_ALL
 if "%OPCAO%"=="2" goto EXCEL_ONLY
 if "%OPCAO%"=="3" goto DASHBOARD_ONLY
-if "%OPCAO%"=="4" goto VALIDAR_TAS
-if "%OPCAO%"=="5" goto EXCEL_ONLINE
+if "%OPCAO%"=="4" goto EXCEL_ONLINE
 if "%OPCAO%"=="0" goto FIM
 echo Opção inválida.
 goto FIM
 
-:: ─── Modo 1: Tudo ────────────────────────────────────────────────────────────
+:: ─── Modo 1: Sync Browser + Excel + Dashboard ───────────────────────────────
 :SYNC_ALL
 echo.
-echo 🔄 Sincronizando issues do Jira...
-python jira_client.py
-if %errorlevel% neq 0 (
-    echo ⚠️  Aviso: falha na sincronização. Usando cache ou dados mock.
-)
-
+echo 🌐 Sync via Browser — Login manual no Jira
+echo    Um browser será aberto. Faça login no Jira.
+echo    Após o login, a extração será feita automaticamente.
 echo.
-echo 📊 Gerando Excel...
-python generate_excel.py
+python sync_jira_browser.py
 if %errorlevel% neq 0 (
-    echo ❌ Falha ao gerar Excel.
+    echo ❌ Falha na sincronização via browser.
     pause
     exit /b 1
 )
@@ -116,7 +111,7 @@ echo.
 streamlit run dashboard.py --server.port 8501 --server.headless false
 goto FIM
 
-:: ─── Modo 5: Abrir Excel Online ────────────────────────────────────────────
+:: ─── Modo 4: Abrir Excel Online ──────────────────────────────────────────────
 :EXCEL_ONLINE
 if "%SHAREPOINT_URL%"=="" (
     echo ⚠️  URL do SharePoint não configurada em rca_config.yaml
@@ -127,63 +122,6 @@ if "%SHAREPOINT_URL%"=="" (
 echo.
 echo 🌐 Abrindo Excel Online...
 start "" "%SHAREPOINT_URL%"
-goto FIM
-
-:: ─── Modo 6: Validar TAs ──────────────────────────────────────────────────────
-:VALIDAR_TAS
-echo.
-echo 🤖 Validando cobertura de Testes Automatizados...
-echo.
-
-:: Verifica token GitHub
-if "%GITHUB_TOKEN%"=="" (
-    echo ⚠️  ATENÇÃO: Token GitHub não configurado!
-    echo.
-    echo    Para usar este recurso, você precisa:
-    echo.
-    echo    1. Criar token em: https://github.com/settings/tokens
-    echo       ^(Marque permissão: repo - read^)
-    echo.
-    echo    2. Configurar variável de ambiente:
-    echo       PowerShell: $env:GITHUB_TOKEN = "ghp_seu_token"
-    echo       CMD:        set GITHUB_TOKEN=ghp_seu_token
-    echo.
-    echo    3. Ou salvar permanentemente:
-    echo       [System.Environment]::SetEnvironmentVariable^('GITHUB_TOKEN', 'ghp_token', 'User'^)
-    echo.
-    echo    Consulte VALIDACAO_TAS.md para instruções detalhadas.
-    echo.
-    pause
-    goto FIM
-)
-
-:: Verifica PyGithub
-python -c "import github" 2>nul
-if %errorlevel% neq 0 (
-    echo 📦 Instalando PyGithub...
-    pip install PyGithub -q
-)
-
-echo 🔍 Buscando TAs no repositório GitHub...
-echo    Repo: MEDIUM-RETAIL-MICROVIX/ta-robotframework
-echo.
-python validar_tas_planilha.py
-if %errorlevel% neq 0 (
-    echo ❌ Falha ao validar TAs.
-    pause
-    goto FIM
-)
-
-echo.
-echo ✅ Validação concluída!
-echo    Coluna "Possui TA" atualizada no Excel.
-echo.
-set /p ABRIR_DASH=   Abrir Dashboard para visualizar? [S/N]: 
-if /i "!ABRIR_DASH!"=="S" (
-    echo.
-    echo 🚀 Abrindo Dashboard...
-    streamlit run dashboard.py --server.port 8501 --server.headless false
-)
 goto FIM
 
 :FIM

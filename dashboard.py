@@ -113,6 +113,10 @@ _EXCEL_COL_MAP = {
     "QA Principal":              "qa_principal",
     "Dev Principal":             "dev_principal",
     "Analisado":                 "analisado",
+    "Qtd Vínculos":              "qtd_vinculos",
+    "DeV Responsável pelo Bug":  "dev_responsavel_bug",
+    "QA Responsável pelo Bug":   "qa_responsavel_bug",
+    "Causa Raiz":                "causa_raiz",
 }
 
 
@@ -410,8 +414,23 @@ def apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
 
 def render_kpis(dff: pd.DataFrame, df_acomp: pd.DataFrame):
     total = len(dff)
-    criticas_abertas = len(dff[(dff["prioridade"] == "Crítica") & (dff["status"].isin(["Aberto", "Em Análise"]))])
-    resolvidas = len(dff[dff["status"] == "Resolvido"])
+
+    # Listas de status reais do Jira
+    status_resolvido = ["concluída", "resolvido", "fechado", "done", "closed", "resolved"]
+    status_aberto = ["aberto", "em análise", "to do", "in progress", "backlog",
+                     "to dev", "in dev", "to test", "in test", "analysis",
+                     "to code review", "code review", "to deploy"]
+    prio_critica = ["p0 - altíssimo", "p0 - altissimo", "crítica", "critical",
+                    "blocker", "highest"]
+
+    s_lower = dff["status"].astype(str).str.strip().str.lower() if "status" in dff.columns else pd.Series(dtype=str)
+    p_lower = dff["prioridade"].astype(str).str.strip().str.lower() if "prioridade" in dff.columns else pd.Series(dtype=str)
+
+    resolvidas = int(s_lower.isin(status_resolvido).sum())
+    abertos_direto = int(s_lower.isin(status_aberto).sum())
+    abertos = abertos_direto if abertos_direto > 0 else (total - resolvidas)
+    criticas_abertas = int((p_lower.isin(prio_critica) & ~s_lower.isin(status_resolvido)).sum()) if len(s_lower) > 0 else 0
+
     taxa = round((resolvidas / total * 100), 1) if total > 0 else 0
 
     tempo_medio = None
@@ -420,10 +439,12 @@ def render_kpis(dff: pd.DataFrame, df_acomp: pd.DataFrame):
         tempo_medio = round(validos.mean(), 1) if len(validos) > 0 else None
 
     # Contagem TA
-    n_com_ta = n_sem_ta = 0
+    n_com_ta = n_sem_ta = n_sem_avaliacao = 0
     if "possui_ta" in dff.columns and total > 0:
-        n_com_ta  = int((dff["possui_ta"].astype(str).str.strip().str.lower() == "sim").sum())
-        n_sem_ta  = int((dff["possui_ta"].astype(str).str.strip().str.lower() == "não").sum())
+        ta_lower = dff["possui_ta"].astype(str).str.strip().str.lower()
+        n_com_ta = int((ta_lower == "sim").sum())
+        n_sem_ta = int((ta_lower == "não").sum())
+        n_sem_avaliacao = total - n_com_ta - n_sem_ta
 
     # % Analisado
     pct_analisado = 0
@@ -436,13 +457,14 @@ def render_kpis(dff: pd.DataFrame, df_acomp: pd.DataFrame):
     with cols[0]:
         st.metric("📋 Total Issues", total)
         if n_com_ta or n_sem_ta:
-            st.caption(f"🟢 {n_com_ta} com TA  |  🔴 {n_sem_ta} sem TA")
+            st.caption(f"🟢 {n_com_ta} com TA  \u00a0|\u00a0  🔴 {n_sem_ta} sem TA")
+        if n_sem_avaliacao > 0:
+            st.caption(f"⚠️ {n_sem_avaliacao} sem avaliação de TA")
     with cols[1]:
         st.metric("🔴 Críticas Abertas", criticas_abertas,
                   delta=f"-{criticas_abertas}" if criticas_abertas > 0 else None,
                   delta_color="inverse")
     with cols[2]:
-        abertos = len(dff[dff["status"].isin(["Aberto", "Em Análise"])])
         st.metric("⏳ Em Aberto", abertos)
     with cols[3]:
         st.metric("✅ Resolvidas", resolvidas)
@@ -586,8 +608,9 @@ def chart_por_area(dff: pd.DataFrame) -> go.Figure:
         hovertemplate="<b>%{y}</b><br>Issues: %{x}<extra></extra>",
     ))
     fig.update_layout(
-        title="Incidências por Área", height=280,
-        margin=dict(l=10, r=30, t=40, b=10),
+        title="Incidências por Área",
+        height=max(280, len(counts) * 45 + 80),
+        margin=dict(l=10, r=50, t=40, b=10),
         showlegend=False, plot_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
     )
@@ -603,35 +626,59 @@ def chart_tendencia(dff: pd.DataFrame, granularidade: str) -> go.Figure:
             x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
             xref="paper", yref="paper"
         )
-        fig.update_layout(title=f"Tendência de Issues por {granularidade}", height=300,
+        fig.update_layout(title=f"Bugs Abertos por {granularidade}", height=300,
                          margin=dict(l=10, r=10, t=40, b=10))
         return fig
 
-    grouped = dff.groupby([col, "status"]).size().reset_index(name="Qtd")
-    if grouped.empty:
+    # Conta quantidade de bugs criados em cada período
+    counts = dff.groupby(col).size().reset_index(name="Qtd")
+    counts = counts.sort_values(col)
+
+    if counts.empty:
         fig = go.Figure()
         fig.add_annotation(
-            text="📊 Sem dados de status no período selecionado",
+            text="📊 Sem dados no período selecionado",
             x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
             xref="paper", yref="paper"
         )
-        fig.update_layout(title=f"Tendência de Issues por {granularidade}", height=300,
+        fig.update_layout(title=f"Bugs Abertos por {granularidade}", height=300,
                          margin=dict(l=10, r=10, t=40, b=10))
         return fig
 
-    fig = px.line(
-        grouped, x=col, y="Qtd", color="status",
-        color_discrete_map=COLORS_STATUS, markers=True,
-        title=f"Tendência de Issues por {granularidade}",
-    )
+    # Formata labels do eixo X
+    if granularidade == "Semana":
+        counts["label"] = counts[col].dt.strftime("Sem %d/%m")
+    else:
+        counts["label"] = counts[col].dt.strftime("%b/%Y")
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=counts["label"], y=counts["Qtd"],
+        marker_color="#E53935",
+        text=counts["Qtd"], textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Bugs abertos: %{y}<extra></extra>",
+    ))
+
+    # Linha de tendência
+    if len(counts) >= 2:
+        fig.add_trace(go.Scatter(
+            x=counts["label"], y=counts["Qtd"],
+            mode="lines+markers",
+            line=dict(color="#1565C0", width=2, dash="dot"),
+            marker=dict(size=6),
+            name="Tendência",
+            hoverinfo="skip",
+        ))
+
     fig.update_layout(
+        title=f"Bugs Abertos por {granularidade}",
         height=300, margin=dict(l=10, r=10, t=40, b=10),
         plot_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#EEE", title=""),
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd"),
-        legend=dict(title="Status", orientation="h", yanchor="bottom", y=-0.3),
+        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd Bugs",
+                   dtick=1),
+        showlegend=False,
     )
-    fig.update_traces(hovertemplate="<b>%{fullData.name}</b><br>Quantidade: %{y}<extra></extra>")
     return fig
 
 
@@ -679,50 +726,64 @@ def chart_heatmap(dff: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def chart_prioridade_por_area(dff: pd.DataFrame) -> go.Figure:
-    if "area" not in dff.columns or "prioridade" not in dff.columns or len(dff) == 0:
+def chart_top_ofensores(dff: pd.DataFrame, top_n: int = 10) -> go.Figure:
+    """Top ofensores: issues com maior Qtd Vínculos (chamados associados)."""
+    col_vinculos = "qtd_vinculos"
+    if col_vinculos not in dff.columns or len(dff) == 0:
         fig = go.Figure()
         fig.add_annotation(
-            text="📊 Dados insuficientes<br>Preencha 'Área' e 'Prioridade'",
+            text="📊 Sem dados de vínculos<br>Preencha 'Qtd Vínculos' no Excel",
             x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
             xref="paper", yref="paper"
         )
-        fig.update_layout(title="Prioridades por Área", height=280,
-                         margin=dict(l=10, r=10, t=40, b=60))
+        fig.update_layout(title="🔥 Top Ofensores (Qtd Vínculos)", height=280,
+                         margin=dict(l=10, r=10, t=40, b=10))
         return fig
 
-    # Filtra dados válidos
-    df_valid = dff.dropna(subset=["area", "prioridade"])
+    df_valid = dff[["key", col_vinculos]].copy()
+    if "resumo" in dff.columns:
+        df_valid["resumo"] = dff["resumo"].astype(str).str[:60]
+    else:
+        df_valid["resumo"] = df_valid["key"]
+    if "area" in dff.columns:
+        df_valid["area"] = dff["area"].fillna("N/I")
+    else:
+        df_valid["area"] = "N/I"
+
+    df_valid[col_vinculos] = pd.to_numeric(df_valid[col_vinculos], errors="coerce").fillna(0).astype(int)
+    df_valid = df_valid[df_valid[col_vinculos] > 1].sort_values(col_vinculos, ascending=True).tail(top_n)
+
     if df_valid.empty:
         fig = go.Figure()
         fig.add_annotation(
-            text="📊 Sem área ou prioridade classificadas",
+            text="📊 Nenhuma issue com vínculos > 0",
             x=0.5, y=0.5, showarrow=False, font_size=13, font_color="#888",
             xref="paper", yref="paper"
         )
-        fig.update_layout(title="Prioridades por Área", height=280,
-                         margin=dict(l=10, r=10, t=40, b=60))
+        fig.update_layout(title="🔥 Top Ofensores (Qtd Vínculos)", height=280,
+                         margin=dict(l=10, r=10, t=40, b=10))
         return fig
 
-    pivot = df_valid.groupby(["area", "prioridade"]).size().unstack(fill_value=0)
-    order = [p for p in ["Crítica", "Alta", "Média", "Baixa"] if p in pivot.columns]
-    pivot = pivot[order] if order else pivot
+    labels = df_valid["key"] + " - " + df_valid["area"]
+    hover_text = [
+        f"<b>{row['key']}</b><br>{row['resumo']}<br>Área: {row['area']}<br>Vínculos: {row[col_vinculos]}"
+        for _, row in df_valid.iterrows()
+    ]
 
-    fig = go.Figure()
-    for prio in order:
-        fig.add_trace(go.Bar(
-            name=prio, x=pivot.index.tolist(), y=pivot[prio].tolist(),
-            marker_color=COLORS_PRIO.get(prio, "#BDBDBD"),
-            hovertemplate=f"<b>{prio}</b><br>%{{x}}<br>Issues: %{{y}}<extra></extra>",
-        ))
-
+    fig = go.Figure(go.Bar(
+        x=df_valid[col_vinculos], y=labels,
+        orientation="h",
+        marker_color="#E53935",
+        text=df_valid[col_vinculos], textposition="outside",
+        hovertext=hover_text, hoverinfo="text",
+    ))
     fig.update_layout(
-        barmode="stack", title="Prioridades por Área", height=280,
-        margin=dict(l=10, r=10, t=40, b=60),
+        title="🔥 Top Ofensores (Qtd Vínculos)",
+        height=max(280, len(df_valid) * 40 + 80),
+        margin=dict(l=10, r=50, t=40, b=10),
         plot_bgcolor="white",
-        xaxis=dict(title="Área"),
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
-        legend=dict(title="Prioridade", orientation="h", yanchor="bottom", y=-0.4),
+        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd Vínculos"),
+        showlegend=False,
     )
     return fig
 
@@ -913,8 +974,9 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
         hovertemplate="<b>%{y}</b><br>Issues: %{x}<extra></extra>",
     ))
     fig.update_layout(
-        title="Erros por Time", height=280,
-        margin=dict(l=10, r=30, t=40, b=10),
+        title="Erros por Time",
+        height=max(280, len(counts) * 45 + 80),
+        margin=dict(l=10, r=50, t=40, b=10),
         plot_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
         showlegend=False,
@@ -1039,6 +1101,7 @@ def render_detail_table(dff: pd.DataFrame):
     )
 
 
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -1068,30 +1131,35 @@ def main():
     st.markdown("---")
 
     # Linha 1: Tipo de Erro + Ajuste Realizado
-    col1, col2 = st.columns([3, 2])
+    col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(chart_tipo_erro(dff), use_container_width=True, key="chart_tipo_erro", config=PLOTLY_CONFIG)
     with col2:
         st.plotly_chart(chart_ajuste_realizado(dff), use_container_width=True, key="chart_ajuste", config=PLOTLY_CONFIG)
 
-    # Linha 2: Por Área | Pendências por Área | Erros por Time
-    col3, col4, col5 = st.columns([2, 2, 1])
+    # Linha 2: Por Área | Erros por Time
+    col3, col4 = st.columns(2)
     with col3:
         st.plotly_chart(chart_por_area(dff), use_container_width=True, key="chart_por_area", config=PLOTLY_CONFIG)
     with col4:
-        st.plotly_chart(chart_pendencias_por_area(df_acomp_filtered), use_container_width=True, key="chart_pendencias_area", config=PLOTLY_CONFIG)
-    with col5:
         st.plotly_chart(chart_erros_por_time(dff), use_container_width=True, key="chart_erros_time", config=PLOTLY_CONFIG)
 
-    # Linha 3: Tendência Temporal + Acompanhamento por Solução
-    col_tend, col_sol = st.columns([3, 2])
+    # Linha 3: Pendências por Área | Top Ofensores (Vínculos)
+    col5a, col5b = st.columns(2)
+    with col5a:
+        st.plotly_chart(chart_pendencias_por_area(df_acomp_filtered), use_container_width=True, key="chart_pendencias_area", config=PLOTLY_CONFIG)
+    with col5b:
+        st.plotly_chart(chart_top_ofensores(dff), use_container_width=True, key="chart_top_ofensores", config=PLOTLY_CONFIG)
+
+    # Linha 4: Tendência Temporal + Acompanhamento por Solução
+    col_tend, col_sol = st.columns(2)
     with col_tend:
         st.plotly_chart(chart_tendencia(dff, filters["granularidade"]), use_container_width=True, key="chart_tendencia", config=PLOTLY_CONFIG)
     with col_sol:
         st.plotly_chart(chart_solucoes(dff, filters["granularidade"]), use_container_width=True, key="chart_solucoes", config=PLOTLY_CONFIG)
 
-    # Linha 4: Heatmap + Status do Acompanhamento
-    col5, col6 = st.columns([3, 2])
+    # Linha 5: Heatmap + Status do Acompanhamento
+    col5, col6 = st.columns(2)
     with col5:
         st.plotly_chart(chart_heatmap(dff), use_container_width=True, key="chart_heatmap", config=PLOTLY_CONFIG)
     with col6:

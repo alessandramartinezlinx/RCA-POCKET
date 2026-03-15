@@ -25,6 +25,12 @@ rca_config.local.yaml
 # VS Code
 .vscode/
 
+# Playwright MCP (logs temporários)
+.playwright-mcp/
+
+# Lock files
+.~lock.*
+
 # Windows
 Thumbs.db
 desktop.ini

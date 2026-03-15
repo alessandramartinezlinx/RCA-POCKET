@@ -5,12 +5,20 @@
 
 jira:
   base_url: "https://jira.linx.com.br"
-  # Token  prioridade de leitura:
+  # Token — prioridade de leitura:
   #   1. Variável de ambiente JIRA_API_TOKEN  <- injetada pela pipeline via Azure Key Vault
-  #      (MVXDEV-KEYVAULT > jira-api-token-robot, task AzureKeyVault@2 em parameters.yaml)
+  #      Key Vault:    MVXDEV-KEYVAULT
+  #      Secret:       jira-api-token-robot   (mesmo usado pelo ta-robotframework)
+  #      Subscription: DEV_CORE_MODA_SHOPPING_JV_Microvix
+  #      Task:         AzureKeyVault@2 (RunAsPreJob: true)
+  #      Pipeline:     .azdevops/pipeline.yaml
   #   2. Campo "token" abaixo                 <- uso local em desenvolvimento
   #   3. "SEU_TOKEN_AQUI" (valor padrão)      <- ativa modo MOCK automaticamente
-  # Para gerar PAT local: Jira > Perfil > Personal Access Tokens
+  #
+  # Para testar localmente com token real:
+  #   PowerShell: $env:JIRA_API_TOKEN = "seu-pat-aqui"
+  #   Ou edite o campo token abaixo.
+  # Para gerar PAT: Jira > Perfil > Personal Access Tokens
   token: "SEU_TOKEN_AQUI"
   auth_type: "pat"
   filter_id: "62693"
@@ -23,7 +31,10 @@ jira:
   # Usado para contar vínculos a partir de links no campo
   # Se não especificado, o sistema tentará detectar automaticamente
   # Exemplo: "customfield_10001" ou deixe comentado para busca automática
-  # numero_caso_field: "customfield_10001"
+  numero_caso_field: "customfield_20506"
+  # Campos de pessoa (descobertos automaticamente pelo sync_jira_browser.py)
+  dev_responsavel_field: "customfield_14100"   # Responsável Desenvolvimento
+  qa_responsavel_field: "customfield_14101"    # Responsável QA
   # Campos mínimos para reduzir payload na API (economiza recursos do DC)
   fields:
     - summary
@@ -37,6 +48,9 @@ jira:
     - resolution
     - resolutiondate
     - comment        # últimos comentários — usado para preencher "Ação Realizada no Bug"
+    - customfield_20506  # Número do Caso — usado para contar vínculos
+    - customfield_14100  # Responsável Desenvolvimento
+    - customfield_14101  # Responsável QA
     # Adicione aqui o campo SLA se souber o nome exato (ex: customfield_10000)
     # Caso contrário, use "*all" para buscar todos os campos (mais lento)
   max_results_per_page: 100

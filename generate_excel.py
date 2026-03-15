@@ -28,6 +28,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.formatting.rule import CellIsRule, FormulaRule
 
 from jira_client import JiraClient, MOCK_ACTIONS
+from indexar_testes import carregar_indice, buscar_tas_relacionados
 
 # =============================================================================
 # PALETA DE CORES
@@ -156,7 +157,7 @@ DADOS_COLS = [
     ("X", "Dev Principal",             18),
     ("Y", "Issue de Acompanhamento",   18),
     ("Z", "Analisado",                 14),
-    ("AA", "Semana",                   12),
+    ("AA", "Data Filtragem",            14),
 ]
 
 # Cores dos 3 blocos de cabeçalho
@@ -200,6 +201,9 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     dados_analisados  = preserved.get("dados_analisados", {})
     dados_manual_cols = preserved.get("dados_manual_cols", {})
 
+    # Carrega índice de TAs para matching por similaridade
+    ta_indice = carregar_indice()
+
     for row_idx, issue in enumerate(issues, start=2):
         key  = issue.get("key", "")
         link = issue.get("link_jira", "")
@@ -234,6 +238,11 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         data_criacao   = issue.get("data_criacao")
         data_resolucao = issue.get("data_resolucao")
 
+        # Se valor preservado de semana for texto antigo (Atual/Anterior), ignora
+        semana_preservada = _m("semana")
+        if semana_preservada and str(semana_preservada).strip().lower() in ("atual", "anterior"):
+            semana_preservada = None
+
         vals = [
             key,                                            # A  Key
             issue.get("resumo", ""),                       # B  Resumo
@@ -261,7 +270,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             issue.get("dev_principal", ""),                # X  Dev Principal
             _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
             _m("analisado"),                               # Z  Analisado ← manual
-            issue.get("_semana", ""),                      # AA Semana
+            semana_preservada or issue.get("_semana", ""), # AA Data da filtragem
         ]
 
         # Escreve valores base
@@ -319,14 +328,10 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if st_color:
             status_cell.fill = PatternFill("solid", fgColor=st_color)
 
-        # AA (27): Semana - destaque visual para semana atual
+        # AA (27): Data da filtragem/sync
         semana_cell = ws.cell(row=row_idx, column=27)
-        if issue.get("_semana") == "Atual":
-            semana_cell.fill = PatternFill("solid", fgColor="C6EFCE")  # verde claro
-            semana_cell.font = Font(bold=True, size=9, color="006100")
-        else:
-            semana_cell.fill = PatternFill("solid", fgColor="FFEB9C")  # amarelo claro
-            semana_cell.font = Font(size=9, color="9C6500")
+        semana_cell.alignment = Alignment(vertical="center", horizontal="center")
+        semana_cell.font = Font(size=9)
         
         # J (10): Qtd Vínculos - destaque para issues com muitos vínculos
         vinc_cell = ws.cell(row=row_idx, column=10)
@@ -338,6 +343,24 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             vinc_cell.fill = PatternFill("solid", fgColor="FFEB9C")  # amarelo
             vinc_cell.font = Font(bold=True, size=9, color="9C6500")
 
+        # S (19): Arquivo TA — preenchido por matching de similaridade
+        if ta_indice and not manual.get("arquivo_ta"):
+            resumo = issue.get("resumo", "")
+            area = issue.get("area", "")
+            matches = buscar_tas_relacionados(resumo, area, ta_indice, top_n=5)
+            if matches:
+                ta_cell = ws.cell(row=row_idx, column=19)
+                nomes = [m["nome"] for m in matches[:3]]
+                ta_text = "\n".join(nomes)
+                if len(matches) > 3:
+                    ta_text += f"\n(+{len(matches)-3} mais)"
+                ta_cell.value = ta_text
+                ta_cell.alignment = Alignment(vertical="top", wrap_text=True)
+                # Preenche R (18): Possui TA = "Sim" se encontrou matches
+                r_cell = ws.cell(row=row_idx, column=18)
+                if not r_cell.value or str(r_cell.value).strip().lower() != "sim":
+                    r_cell.value = "Sim"
+
     n_rows   = len(issues)
     last_row = max(1 + n_rows, 2)
     last_col = len(DADOS_COLS)
@@ -347,7 +370,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     dv_possui_ta.sqref      = "R2:R{sfx}".format(sfx=sfx)
     dv_resultado_auto.sqref = "T2:T{sfx}".format(sfx=sfx)
     dv_prob_res.sqref       = "V2:V{sfx}".format(sfx=sfx)
-    dv_analisado.sqref      = "AA2:AA{sfx}".format(sfx=sfx)
+    dv_analisado.sqref      = "Z2:Z{sfx}".format(sfx=sfx)
     ws.add_data_validation(dv_ajuste)
     ws.add_data_validation(dv_possui_ta)
     ws.add_data_validation(dv_resultado_auto)
@@ -594,17 +617,25 @@ def _read_existing_manual_data(filepath: str) -> dict:
             col_contexto  = header.index("Contexto")               if "Contexto"                in header else None
             col_prob      = header.index("Problema Resolvido?")    if "Problema Resolvido?"    in header else None
             col_issue_acomp = header.index("Issue de Acompanhamento") if "Issue de Acompanhamento" in header else None
+            col_semana    = None
+            for col_name_semana in ("Data Filtragem", "Semana"):
+                if col_name_semana in header:
+                    col_semana = header.index(col_name_semana)
+                    break
+            col_arquivo_ta = header.index("Arquivo TA")               if "Arquivo TA"               in header else None
 
             manual_indices = {
                 "causa_raiz":         col_causa_raiz,
                 "analise_causa":      col_analise,
                 "ajuste_realizado":   col_ajuste,
                 "possui_ta":          col_ta,
+                "arquivo_ta":         col_arquivo_ta,
                 "resultado_automacao": col_resultado_auto,
                 "contexto":           col_contexto,
                 "problema_resolvido": col_prob,
                 "issue_acompanhamento": col_issue_acomp,
                 "analisado":          col_analisado,
+                "semana":             col_semana,
             }
 
             for row in all_rows[1:]:
@@ -755,11 +786,12 @@ def _apply_weekly_stacking(issues: list, preserved_data: dict) -> list:
         else:
             issues_antigas.append(issue)
     
-    # Adiciona marcador de semana em cada issue
+    # Adiciona data de sincronização em cada issue
+    data_sync = hoje.strftime("%d/%m/%Y")
     for issue in issues_semana_atual:
-        issue["_semana"] = "Atual"
+        issue["_semana"] = data_sync
     for issue in issues_antigas:
-        issue["_semana"] = "Anterior"
+        issue["_semana"] = issue.get("_semana") or data_sync
     
     # Issues da semana atual no topo, antigas embaixo
     return issues_semana_atual + issues_antigas

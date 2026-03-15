@@ -17,3 +17,6 @@ PyGithub>=2.1.1
 
 # YAML (já no projeto principal, listado para completude)
 pyyaml>=6.0.2
+
+# Browser automation (sync via login manual no Jira — temporário até liberação do token)
+playwright>=1.40.0

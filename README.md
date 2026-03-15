@@ -6,10 +6,10 @@ Sistema de gestão e análise de Root Cause Analysis (RCA) com integração Jira
 
 ## 📋 Funcionalidades
 
-- ✅ Sincronização automática com Jira (via API)
+- 🌐 Sincronização com Jira via browser (login manual)
 - 📊 Planilha Excel formatada com 3 blocos de análise
 - 📈 Dashboard web interativo (Streamlit)
-- 🤖 **Validação automática de TAs** (Robot Framework no GitHub)
+- 🤖 **Indexação de TAs por similaridade** (Robot Framework no GitHub)
 - 🔄 Cache inteligente para performance
 - 🎨 Classificação automática por tipo de erro
 - 📱 Ordenação por vínculos e prioridade
@@ -68,27 +68,20 @@ Para usar a funcionalidade de validação de testes automatizados:
 ```
 
 **Opções disponíveis:**
-- `[1]` Sincronizar Jira + Gerar Excel + Abrir Dashboard
-- `[2]` Apenas Gerar/Atualizar Excel
+- `[1]` Sincronizar Jira (browser) + Gerar Excel + Abrir Dashboard
+- `[2]` Apenas Gerar/Atualizar Excel (inclui indexação de TAs)
 - `[3]` Apenas Abrir Dashboard
-- `[4]` **Validar Cobertura de TAs** (busca GitHub Robot Framework)
-- `[5]` Abrir Excel Online (SharePoint)
+- `[4]` Abrir Excel Online (SharePoint)
 - `[0]` Sair
 
 ### Via Comandos Diretos
 
 ```powershell
-# Sincronizar com Jira
-python jira_client.py
+# Sincronizar com Jira (via browser)
+python sync_jira_browser.py
 
 # Gerar planilha Excel
 python generate_excel.py
-
-# Preencher Time/Área automaticamente (inferência inteligente)
-python preencher_time_area_inferencia.py
-
-# Validar TAs no GitHub
-python validar_tas_planilha.py
 
 # Abrir dashboard
 streamlit run dashboard.py
@@ -118,14 +111,14 @@ streamlit run dashboard.py
 
 ---
 
-## 🤖 Validação de Testes Automatizados
+## 🤖 Indexação de Testes Automatizados
 
-O sistema busca automaticamente no repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework) se existem testes para cada issue:
+O sistema indexa test cases do repositório [ta-robotframework](https://github.com/MEDIUM-RETAIL-MICROVIX/ta-robotframework) e faz matching por similaridade de palavras-chave:
 
-1. Executa busca por `MODAJOI-XXXXX` e `SHOP-JOI-XXXXX`
-2. Atualiza coluna **R (Possui TA)**: Sim/Não
-3. Preenche coluna **S (Arquivo TA)**: lista de arquivos `.robot` encontrados
-4. Gera relatório de cobertura (% com/sem TA)
+1. Indexa test cases dos arquivos `.robot` no GitHub
+2. Compara palavras-chave do resumo de cada issue com nomes dos testes
+3. Atualiza coluna **R (Possui TA)**: Sim/Não
+4. Preenche coluna **S (Arquivo TA)**: top 3 test cases mais relevantes
 
 **Requer**: Token GitHub configurado (veja seção [Configuração](#2-configuração))
 
@@ -134,7 +127,6 @@ O sistema busca automaticamente no repositório [ta-robotframework](https://gith
 ## 📚 Documentação Completa
 
 - **[MANUAL.md](MANUAL.md)**: Guia completo do usuário
-- **[VALIDACAO_TAS.md](VALIDACAO_TAS.md)**: Detalhes sobre validação de TAs
 - **[FUNCIONALIDADE_ORDENACAO.md](FUNCIONALIDADE_ORDENACAO.md)**: Sistema de ordenação
 
 ---
@@ -165,7 +157,7 @@ Edite `rca_config.yaml` para:
 |---|---|
 | "Token GitHub não configurado" | Configure `GITHUB_TOKEN` (veja [Configuração](#2-configuração)) |
 | "Falha ao validar TAs" | Verifique permissão `repo` do token GitHub |
-| "Planilha sem Time/Área" | Execute `python preencher_time_area_inferencia.py` |
+| "Planilha sem Time/Área" | Regenere o Excel com `python generate_excel.py` |
 | Dashboard não atualiza | Clique no botão 🔄 ou regenere o Excel |
 
 ---

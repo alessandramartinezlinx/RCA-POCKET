@@ -1,48 +1,91 @@
-# ======================================================================
+# =============================================================================
 # RCA Pocket - Arquivo de Configuração (EXEMPLO)
-# ======================================================================
-# 
-# INSTRUÇÕES:
-# 1. Copie este arquivo para: rca_config.yaml
-# 2. Preencha com suas credenciais reais
-# 3. NUNCA commit rca_config.yaml no Git (já está no .gitignore)
+# =============================================================================
 #
-# ======================================================================
+# INSTRUÇÕES:
+#   1. Copie este arquivo para: rca_config.yaml
+#   2. Preencha com suas credenciais reais
+#   3. NUNCA commit rca_config.yaml no Git (já está no .gitignore)
+#
+# =============================================================================
 
 jira:
-  # URL do seu Jira (Atlassian Cloud ou Server)
-  url: "https://seu-jira.atlassian.net"
-  
-  # E-mail da conta Jira
-  email: "seu-email@empresa.com"
-  
-  # Token de API do Jira
-  # Gere em: https://id.atlassian.com/manage-profile/security/api-tokens
-  api_token: "SEU_TOKEN_AQUI"
-  
-  # JQL para buscar issues (ajuste conforme necessário)
-  jql: "project = MODAJOI AND issuetype = Bug AND created >= -90d"
-  
-  # Campos customizados (ajuste IDs conforme seu Jira)
-  custom_fields:
-    tipo_erro: "customfield_10050"
-    acao_realizada: "customfield_10051"
-    analise_causa: "customfield_10052"
+  # URL do Jira Data Center
+  base_url: "https://jira.linx.com.br"
 
-excel:
-  # Nome do arquivo Excel de saída
-  arquivo_saida: "RCA_Pocket.xlsx"
+  # Token (Personal Access Token) — prioridade de leitura:
+  #   1. Variável de ambiente JIRA_API_TOKEN  <- injetada pela pipeline via Azure Key Vault
+  #      (MVXDEV-KEYVAULT > jira-api-token-robot, task AzureKeyVault@2)
+  #      Azure Subscription: DEV_CORE_MODA_SHOPPING_JV_Microvix
+  #   2. Campo "token" abaixo                 <- uso local em desenvolvimento
+  #   3. "SEU_TOKEN_AQUI" (valor padrão)      <- ativa modo MOCK automaticamente
+  # Para gerar PAT local: Jira > Perfil > Personal Access Tokens
+  token: "SEU_TOKEN_AQUI"
+
+  # Tipo de autenticação: "pat" (Bearer Token) ou "basic" (usuário:senha)
+  auth_type: "pat"
+
+  # ID do filtro salvo no Jira (substitui JQL inline)
+  filter_id: "62693"
+
+  # Campos mínimos para reduzir payload na API (economiza recursos do DC)
+  fields:
+    - summary
+    - status
+    - priority
+    - labels
+    - assignee
+    - created
+    - updated
+    - description
+    - resolution
+    - resolutiondate
+    - comment
+  max_results_per_page: 100
 
 cache:
-  # Arquivo de cache de issues
+  pasta: "data"
   arquivo_cache: "data/issues_cache.json"
-  
-  # Arquivo com timestamp da última sincronização
   arquivo_ultima_sync: "data/last_sync.txt"
+  # Delta update: busca apenas issues atualizadas desde a última sync
+  delta_update: true
+  # Paralelismo na paginação (útil para volumes > 500 issues)
+  parallel_pagination: false
 
-github:
-  # Token GitHub para validação de TAs (opcional)
-  token: ""
-  
-  # Repositório para buscar TAs
-  repo: "sua-empresa/seu-repo"
+excel:
+  arquivo_saida: "RCA_Pocket.xlsx"
+  # URL do Excel Online no SharePoint (com ?web=1)
+  sharepoint_url: ""
+
+# =============================================================================
+# Classificação automática de tipo de erro por palavras-chave
+# =============================================================================
+tipos_erro:
+  "Banco de Dados":
+    keywords: ["ora-", "sql", "deadlock", "query", "connection pool"]
+  "Sistema":
+    keywords: ["nullpointer", "error 500", "exception", "outofmemory"]
+  "Indisponibilidade":
+    keywords: ["timeout", "indisponível", "fora do ar", "lentidão"]
+  "Integração":
+    keywords: ["webhook", "integração", "sefaz", "xml inválido"]
+  "Configuração":
+    keywords: ["configuração", "parâmetro", "permissão"]
+  "Segurança":
+    keywords: ["certificado", "autenticação", "token expirado", "ssl"]
+  "Outro":
+    keywords: []
+
+# =============================================================================
+# Times e Áreas — mapeamento de labels Jira para responsáveis
+# =============================================================================
+times:
+  MeuTime:
+    areas:
+      - nome: Área Exemplo
+        labels_jira:
+          - "Label no Jira"
+        qa_principal: "Nome QA"
+        qa_secundario: ""
+        dev_principal: "Nome Dev"
+        dev_secundario: ""
