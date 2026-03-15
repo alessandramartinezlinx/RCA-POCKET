@@ -1038,6 +1038,61 @@ def chart_acompanhamento_status(df_acomp: pd.DataFrame) -> go.Figure:
 
 
 # =============================================================================
+# COBERTURA DE TAs
+# =============================================================================
+
+def chart_cobertura_ta(dff: pd.DataFrame):
+    """Gráfico de cobertura de Testes Automatizados (Sim / Não / Sem avaliação)."""
+    if "possui_ta" not in dff.columns or len(dff) == 0:
+        fig = go.Figure()
+        fig.update_layout(title="🧪 Cobertura de TAs", height=320,
+                          annotations=[dict(text="Sem dados de TA", showarrow=False,
+                                            font=dict(size=16, color="#999"))])
+        return fig
+
+    ta_col = dff["possui_ta"].astype(str).str.strip().str.lower()
+    n_sim = int((ta_col == "sim").sum())
+    n_nao = int((ta_col == "não").sum())
+    n_sem = len(dff) - n_sim - n_nao
+
+    labels = []
+    values = []
+    colors = []
+    if n_sim > 0:
+        labels.append("Com TA")
+        values.append(n_sim)
+        colors.append("#43A047")
+    if n_nao > 0:
+        labels.append("Sem TA")
+        values.append(n_nao)
+        colors.append("#E53935")
+    if n_sem > 0:
+        labels.append("Sem avaliação")
+        values.append(n_sem)
+        colors.append("#BDBDBD")
+
+    fig = go.Figure(go.Pie(
+        labels=labels, values=values,
+        marker_colors=colors,
+        hole=0.45,
+        textinfo="label+value+percent",
+        textposition="outside",
+        hovertemplate="<b>%{label}</b><br>Issues: %{value}<br>%{percent}<extra></extra>",
+    ))
+    total = len(dff)
+    pct_coberto = round(n_sim / total * 100, 1) if total > 0 else 0
+    fig.update_layout(
+        title="🧪 Cobertura de TAs",
+        height=320,
+        margin=dict(l=10, r=10, t=40, b=10),
+        showlegend=False,
+        annotations=[dict(text=f"{pct_coberto}%", x=0.5, y=0.5,
+                          font_size=22, font_color="#2E75B6", showarrow=False)],
+    )
+    return fig
+
+
+# =============================================================================
 # TABELA DETALHADA
 # =============================================================================
 
@@ -1164,6 +1219,11 @@ def main():
         st.plotly_chart(chart_heatmap(dff), use_container_width=True, key="chart_heatmap", config=PLOTLY_CONFIG)
     with col6:
         st.plotly_chart(chart_acompanhamento_status(df_acomp_filtered), use_container_width=True, key="chart_acomp_status", config=PLOTLY_CONFIG)
+
+    # Linha 6: Cobertura de TAs
+    col_ta1, col_ta2 = st.columns(2)
+    with col_ta1:
+        st.plotly_chart(chart_cobertura_ta(dff), use_container_width=True, key="chart_cobertura_ta", config=PLOTLY_CONFIG)
 
     st.markdown("---")
 
