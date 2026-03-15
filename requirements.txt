@@ -12,11 +12,12 @@ openpyxl>=3.1.2
 # HTTP / Jira API
 requests>=2.31.0
 
-# GitHub API (validação de TAs)
+# GitHub API (indexação de TAs)
 PyGithub>=2.1.1
 
-# YAML (já no projeto principal, listado para completude)
+# YAML
 pyyaml>=6.0.2
 
-# Browser automation (sync via login manual no Jira — temporário até liberação do token)
-playwright>=1.40.0
+# Playwright é necessário apenas para sync_jira_browser.py (uso local)
+# Instale manualmente se precisar: pip install playwright && python -m playwright install chromium
+# playwright>=1.40.0
