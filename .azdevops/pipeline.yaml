@@ -1,0 +1,82 @@
+# =============================================================================
+# RCA Pocket - Pipeline Azure DevOps
+# =============================================================================
+# Sincroniza issues do Jira e gera Excel RCA automaticamente.
+#
+# Credenciais:
+#   - Azure Subscription: DEV_CORE_MODA_SHOPPING_JV_Microvix
+#   - Key Vault: MVXDEV-KEYVAULT
+#   - Secret: jira-api-token-robot → env var JIRA_API_TOKEN
+#
+# O token é injetado via AzureKeyVault@2 (mesmo secret do ta-robotframework).
+# =============================================================================
+
+trigger: none
+
+parameters:
+  - name: forcarSyncCompleta
+    displayName: "Forçar sincronização completa (ignorar delta)?"
+    type: boolean
+    default: false
+
+pool:
+  name: 'vmss-agent-win2022-ta'
+
+steps:
+  # ─── Buscar secrets do Key Vault ───────────────────────────────────────────
+  - task: AzureKeyVault@2
+    displayName: 'Azure Key Vault: MVXDEV-KEYVAULT'
+    inputs:
+      azureSubscription: 'DEV_CORE_MODA_SHOPPING_JV_Microvix'
+      KeyVaultName: 'MVXDEV-KEYVAULT'
+      RunAsPreJob: true
+
+  # ─── Setup Python ─────────────────────────────────────────────────────────
+  - task: UsePythonVersion@0
+    displayName: 'Usar Python 3.10+'
+    inputs:
+      versionSpec: '3.10'
+
+  - script: pip install -r requirements.txt
+    displayName: 'Instalar dependências'
+
+  # ─── Sincronizar Jira ─────────────────────────────────────────────────────
+  - powershell: |
+      $env:JIRA_API_TOKEN = '$(jira-api-token-robot)'
+
+      if ('${{ parameters.forcarSyncCompleta }}' -eq 'True') {
+        Write-Host "Forçando sync completa (removendo last_sync.txt)..."
+        Remove-Item -Path "data\last_sync.txt" -ErrorAction SilentlyContinue
+      }
+
+      Write-Host "Sincronizando issues do Jira..."
+      python jira_client.py
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Falha na sincronização do Jira"
+        exit 1
+      }
+
+      Write-Host "Gerando Excel RCA..."
+      python generate_excel.py
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Falha ao gerar Excel"
+        exit 1
+      }
+
+      Write-Host "Concluído com sucesso!"
+    displayName: 'Sincronizar Jira + Gerar Excel'
+
+  # ─── Publicar artefatos ───────────────────────────────────────────────────
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publicar Excel RCA'
+    inputs:
+      pathToPublish: 'RCA_Pocket.xlsx'
+      artifactName: 'rca-excel'
+    condition: succeededOrFailed()
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publicar cache de issues'
+    inputs:
+      pathToPublish: 'data/'
+      artifactName: 'rca-cache'
+    condition: succeededOrFailed()

@@ -1,4 +1,4 @@
-"""
+﻿"""
 RCA Pocket - Dashboard Streamlit
 ==================================
 Dashboard interativo com múltiplos filtros para análise de RCAs.
@@ -38,13 +38,18 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS customizado
+# CSS customizado - compatível com dark mode
 st.markdown("""
 <style>
     .main { padding-top: 1rem; }
 
     /* KPI cards — fundo adapta ao tema (claro/escuro) */
-    .stMetric { background: var(--secondary-background-color); border-radius: 8px; padding: 8px; border-left: 4px solid #2E75B6; }
+    .stMetric { 
+        background: var(--secondary-background-color); 
+        border-radius: 8px; 
+        padding: 8px; 
+        border-left: 4px solid var(--primary-color); 
+    }
     .stMetric label { font-size: 12px !important; }
 
     /* Headings — herdam a cor do tema, sem fixar valor */
@@ -54,24 +59,7 @@ st.markdown("""
 
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
 
-    /* Sidebar: fundo sempre azul escuro */
-    [data-testid="stSidebar"] { background: #1F4E79; }
-
-    /* Texto da sidebar — aplica branco SOMENTE em elementos de texto/label,
-       nunca nos inputs/selects (que têm fundo próprio e precisam de cor nativa do tema) */
-    [data-testid="stSidebar"] label { color: #BDD7EE !important; font-size: 13px !important; }
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] .stMarkdown p { color: white !important; }
-    [data-testid="stSidebar"] small,
-    [data-testid="stSidebar"] .stCaption,
-    [data-testid="stSidebar"] .stCaption p { color: #BDD7EE !important; }
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 { color: white !important; }
-    [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.2) !important; }
-    [data-testid="stSidebar"] .stButton button { color: white !important; }
-    [data-testid="stSidebar"] .stRadio label { color: white !important; }
-
+    /* Esconde botão de deploy */
     [data-testid="stAppDeployButton"] { display: none !important; }
 
     /* Responsividade: colunas rolam horizontalmente em vez de sumir */
@@ -523,8 +511,8 @@ def chart_tipo_erro(dff: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         title="Incidências por Tipo de Erro", height=300,
         margin=dict(l=10, r=30, t=40, b=10),
-        showlegend=False, plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        showlegend=False,
+        xaxis=dict(showgrid=True, title="Quantidade"),
     )
     return fig
 
@@ -611,8 +599,8 @@ def chart_por_area(dff: pd.DataFrame) -> go.Figure:
         title="Incidências por Área",
         height=max(280, len(counts) * 45 + 80),
         margin=dict(l=10, r=50, t=40, b=10),
-        showlegend=False, plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        showlegend=False,
+        xaxis=dict(showgrid=True, title="Quantidade"),
     )
     return fig
 
@@ -673,9 +661,8 @@ def chart_tendencia(dff: pd.DataFrame, granularidade: str) -> go.Figure:
     fig.update_layout(
         title=f"Bugs Abertos por {granularidade}",
         height=300, margin=dict(l=10, r=10, t=40, b=10),
-        plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title=""),
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd Bugs",
+        xaxis=dict(showgrid=True, title=""),
+        yaxis=dict(showgrid=True, title="Qtd Bugs",
                    dtick=1),
         showlegend=False,
     )
@@ -781,8 +768,7 @@ def chart_top_ofensores(dff: pd.DataFrame, top_n: int = 10) -> go.Figure:
         title="🔥 Top Ofensores (Qtd Vínculos)",
         height=max(280, len(df_valid) * 40 + 80),
         margin=dict(l=10, r=50, t=40, b=10),
-        plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Qtd Vínculos"),
+        xaxis=dict(showgrid=True, title="Qtd Vínculos"),
         showlegend=False,
     )
     return fig
@@ -841,8 +827,7 @@ def chart_pendencias_por_area(df_acomp: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         title="Pendências por Área (Acompanhamento)", height=280,
         margin=dict(l=10, r=10, t=40, b=10),
-        plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        xaxis=dict(showgrid=True, title="Quantidade"),
         yaxis=dict(title="Área"),
         showlegend=False,
     )
@@ -923,10 +908,9 @@ def chart_solucoes(dff: pd.DataFrame, granularidade: str) -> go.Figure:
         title=f"Acompanhamento por Solu\u00e7\u00e3o \u2014 {total_aval} resolvidas / {total_nao} n\u00e3o resolvidas",
         height=300,
         margin=dict(l=10, r=10, t=40, b=40),
-        plot_bgcolor="white",
         xaxis=dict(tickvals=tickvals, ticktext=ticktext, tickangle=-30,
                    showgrid=False, title=""),
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Issues avaliadas"),
+        yaxis=dict(showgrid=True, title="Issues avaliadas"),
         legend=dict(orientation="h", yanchor="bottom", y=-0.35),
     )
     return fig
@@ -977,8 +961,7 @@ def chart_erros_por_time(dff: pd.DataFrame) -> go.Figure:
         title="Erros por Time",
         height=max(280, len(counts) * 45 + 80),
         margin=dict(l=10, r=50, t=40, b=10),
-        plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        xaxis=dict(showgrid=True, title="Quantidade"),
         showlegend=False,
     )
     return fig
@@ -1029,9 +1012,8 @@ def chart_acompanhamento_status(df_acomp: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         title="Status do Acompanhamento", height=280,
         margin=dict(l=10, r=10, t=40, b=10),
-        plot_bgcolor="white",
         xaxis=dict(title="Status da Ação"),
-        yaxis=dict(showgrid=True, gridcolor="#EEE", title="Quantidade"),
+        yaxis=dict(showgrid=True, title="Quantidade"),
         showlegend=False,
     )
     return fig
