@@ -41,6 +41,7 @@ echo   [1] Sincronizar Jira + Gerar Excel + Abrir Dashboard
 echo   [2] Apenas Gerar/Atualizar Excel
 echo   [3] Apenas Abrir Dashboard
 if not "%SHAREPOINT_URL%"=="" echo   [4] Abrir Excel Online (SharePoint)
+echo   [5] Publicar Excel atual no GitHub
 echo   [0] Sair
 echo.
 echo Nota: A opção 1 abre o browser para login manual no Jira.
@@ -53,6 +54,7 @@ if "%OPCAO%"=="1" goto SYNC_ALL
 if "%OPCAO%"=="2" goto EXCEL_ONLY
 if "%OPCAO%"=="3" goto DASHBOARD_ONLY
 if "%OPCAO%"=="4" goto EXCEL_ONLINE
+if "%OPCAO%"=="5" goto PUBLISH_EXCEL
 if "%OPCAO%"=="0" goto FIM
 echo Opção inválida.
 goto FIM
@@ -91,6 +93,9 @@ if %errorlevel% neq 0 (
 )
 echo.
 echo ✅ Excel gerado: RCA_Pocket.xlsx
+echo.
+set /p PUBLICAR_GITHUB=   Publicar RCA_Pocket.xlsx no GitHub agora? [S/N]: 
+if /i "!PUBLICAR_GITHUB!"=="S" call :PUBLISH_EXCEL_ROUTINE
 if not "%SHAREPOINT_URL%"=="" (
     echo.
     set /p ABRIR_ONLINE=   Abrir Excel Online no SharePoint? [S/N]: 
@@ -123,6 +128,53 @@ echo.
 echo 🌐 Abrindo Excel Online...
 start "" "%SHAREPOINT_URL%"
 goto FIM
+
+:: ─── Modo 5: Publicar Excel atual no GitHub ────────────────────────────────
+:PUBLISH_EXCEL
+echo.
+call :PUBLISH_EXCEL_ROUTINE
+pause
+goto FIM
+
+:PUBLISH_EXCEL_ROUTINE
+if not exist "RCA_Pocket.xlsx" (
+    echo ❌ Arquivo RCA_Pocket.xlsx não encontrado na pasta do projeto.
+    exit /b 1
+)
+
+where git >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ Git não encontrado. Instale o Git e adicione ao PATH.
+    exit /b 1
+)
+
+echo 📤 Publicando RCA_Pocket.xlsx no GitHub...
+git add RCA_Pocket.xlsx
+if %errorlevel% neq 0 (
+    echo ❌ Falha ao adicionar RCA_Pocket.xlsx ao commit.
+    exit /b 1
+)
+
+git diff --cached --quiet -- RCA_Pocket.xlsx
+if %errorlevel% equ 0 (
+    echo ℹ️  Nenhuma mudança nova em RCA_Pocket.xlsx para publicar.
+    exit /b 0
+)
+
+git commit -m "Atualiza planilha RCA_Pocket.xlsx"
+if %errorlevel% neq 0 (
+    echo ❌ Falha ao criar commit da planilha.
+    exit /b 1
+)
+
+git push
+if %errorlevel% neq 0 (
+    echo ❌ Falha ao enviar alterações para o GitHub.
+    exit /b 1
+)
+
+echo ✅ Planilha publicada com sucesso.
+exit /b 0
 
 :FIM
 echo.

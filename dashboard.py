@@ -11,7 +11,6 @@ Lê dados de:
   2. data/issues_cache.json  (fallback quando o Excel ainda não foi gerado)
 """
 
-import os
 import json
 import sys
 from pathlib import Path
@@ -19,7 +18,6 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
 import yaml
 
@@ -258,6 +256,150 @@ PLOTLY_CONFIG = {
     }
 }
 
+AUTO_REFRESH_INTERVAL_SECONDS = 60
+
+
+def get_theme_type() -> str:
+    """Detecta o tema ativo do Streamlit com fallback seguro."""
+    theme = getattr(st.context, "theme", None)
+    theme_type = None
+
+    if isinstance(theme, dict):
+        theme_type = theme.get("type")
+    elif theme is not None:
+        theme_type = getattr(theme, "type", None)
+
+    configured_base = st.get_option("theme.base")
+    if theme_type in {"light", "dark"}:
+        return theme_type
+    if configured_base in {"light", "dark"}:
+        return configured_base
+    return "dark"
+
+
+def get_theme_tokens() -> dict:
+    """Paleta usada para harmonizar os gráficos Plotly com o tema do app."""
+    if get_theme_type() == "dark":
+        return {
+            "template": "plotly_dark",
+            "text": "#FAFAFA",
+            "muted_text": "#AAB4C3",
+            "grid": "rgba(250, 250, 250, 0.10)",
+            "axis": "rgba(250, 250, 250, 0.24)",
+            "hover_bg": "#182028",
+        }
+
+    return {
+        "template": "plotly_white",
+        "text": "#1F2937",
+        "muted_text": "#6B7280",
+        "grid": "rgba(15, 23, 42, 0.10)",
+        "axis": "rgba(15, 23, 42, 0.24)",
+        "hover_bg": "#F8FAFC",
+    }
+
+
+def apply_plotly_theme(fig: go.Figure) -> go.Figure:
+    """Aplica tema consistente aos gráficos sem alterar a lógica dos dados."""
+    tokens = get_theme_tokens()
+    fig.update_layout(
+        template=tokens["template"],
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=tokens["text"]),
+        title_font=dict(color=tokens["text"]),
+        hoverlabel=dict(bgcolor=tokens["hover_bg"], font_color=tokens["text"]),
+        legend=dict(
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(color=tokens["text"]),
+            title_font=dict(color=tokens["text"]),
+        ),
+    )
+    fig.update_xaxes(
+        gridcolor=tokens["grid"],
+        linecolor=tokens["axis"],
+        zerolinecolor=tokens["grid"],
+        tickfont=dict(color=tokens["text"]),
+        title_font=dict(color=tokens["text"]),
+    )
+    fig.update_yaxes(
+        gridcolor=tokens["grid"],
+        linecolor=tokens["axis"],
+        zerolinecolor=tokens["grid"],
+        tickfont=dict(color=tokens["text"]),
+        title_font=dict(color=tokens["text"]),
+    )
+
+    for annotation in fig.layout.annotations or ():
+        font = annotation.font.to_plotly_json() if annotation.font else {}
+        if font.get("color") in {None, "#888", "#999"}:
+            font["color"] = tokens["muted_text"]
+        annotation.update(font=font)
+
+    return fig
+
+
+def render_chart(fig: go.Figure, key: str):
+    st.plotly_chart(
+        apply_plotly_theme(fig),
+        use_container_width=True,
+        key=key,
+        config=PLOTLY_CONFIG,
+    )
+
+
+def build_data_signature(config: dict) -> str:
+    """Assinatura leve para detectar mudanças nas fontes de dados."""
+    base_dir = Path(__file__).parent
+    watched_paths = [
+        base_dir / config["excel"]["arquivo_saida"],
+        base_dir / config["cache"]["arquivo_cache"],
+        base_dir / config["cache"]["arquivo_ultima_sync"],
+        base_dir / "rca_config.yaml",
+    ]
+
+    parts = []
+    for path in watched_paths:
+        if path.exists():
+            stat = path.stat()
+            parts.append(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}")
+        else:
+            parts.append(f"{path.name}:missing")
+    return "|".join(parts)
+
+
+def sync_data_signature(config: dict):
+    """Limpa o cache quando a fonte de dados muda entre reruns."""
+    current_signature = build_data_signature(config)
+    previous_signature = st.session_state.get("_data_signature")
+
+    if previous_signature and previous_signature != current_signature:
+        st.cache_data.clear()
+
+    st.session_state["_data_signature"] = current_signature
+
+
+def start_auto_refresh_watcher(config: dict, enabled: bool):
+    """Monitora as fontes de dados e recarrega o app quando houver mudança."""
+    if not enabled:
+        return
+
+    @st.fragment(run_every=f"{AUTO_REFRESH_INTERVAL_SECONDS}s")
+    def _watch_data_files():
+        current_signature = build_data_signature(config)
+        previous_signature = st.session_state.get("_data_signature")
+
+        if previous_signature is None:
+            st.session_state["_data_signature"] = current_signature
+            return
+
+        if current_signature != previous_signature:
+            st.session_state["_data_signature"] = current_signature
+            st.cache_data.clear()
+            st.rerun()
+
+    _watch_data_files()
+
 
 # =============================================================================
 # SIDEBAR: FILTROS
@@ -321,6 +463,14 @@ def build_sidebar(df: pd.DataFrame):
         st.markdown("---")
         st.markdown("### ⚙️ Visualização")
         granularidade = st.radio("Tendência por:", ["Semana", "Mês"], index=1, horizontal=True)
+        auto_refresh = st.toggle(
+            "Autoatualizar",
+            value=True,
+            key="auto_refresh",
+            help=f"Verifica mudanças nos arquivos de dados a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.",
+        )
+        if auto_refresh:
+            st.caption(f"Atualização automática ativa a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.")
 
         st.markdown("---")
         col_btn1, col_btn2 = st.columns(2)
@@ -358,6 +508,7 @@ def build_sidebar(df: pd.DataFrame):
         "possui_ta": sel_possui_ta,
         "problema_resolvido": sel_resolvido,
         "granularidade": granularidade,
+        "auto_refresh": auto_refresh,
     }
 
 
@@ -1147,10 +1298,13 @@ def render_detail_table(dff: pd.DataFrame):
 
 def main():
     config = load_config()
+    sync_data_signature(config)
+
     df = load_issues(config)
     df_acomp = load_acompanhamento(config)
 
     filters = build_sidebar(df)
+    start_auto_refresh_watcher(config, filters["auto_refresh"])
     dff = apply_filters(df, filters)
 
     # Filtrar aba Acompanhamento pelas issues filtradas (coluna "Issue Original")
@@ -1172,42 +1326,42 @@ def main():
     # Linha 1: Tipo de Erro + Ajuste Realizado
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(chart_tipo_erro(dff), use_container_width=True, key="chart_tipo_erro", config=PLOTLY_CONFIG)
+        render_chart(chart_tipo_erro(dff), key="chart_tipo_erro")
     with col2:
-        st.plotly_chart(chart_ajuste_realizado(dff), use_container_width=True, key="chart_ajuste", config=PLOTLY_CONFIG)
+        render_chart(chart_ajuste_realizado(dff), key="chart_ajuste")
 
     # Linha 2: Por Área | Erros por Time
     col3, col4 = st.columns(2)
     with col3:
-        st.plotly_chart(chart_por_area(dff), use_container_width=True, key="chart_por_area", config=PLOTLY_CONFIG)
+        render_chart(chart_por_area(dff), key="chart_por_area")
     with col4:
-        st.plotly_chart(chart_erros_por_time(dff), use_container_width=True, key="chart_erros_time", config=PLOTLY_CONFIG)
+        render_chart(chart_erros_por_time(dff), key="chart_erros_time")
 
     # Linha 3: Pendências por Área | Top Ofensores (Vínculos)
     col5a, col5b = st.columns(2)
     with col5a:
-        st.plotly_chart(chart_pendencias_por_area(df_acomp_filtered), use_container_width=True, key="chart_pendencias_area", config=PLOTLY_CONFIG)
+        render_chart(chart_pendencias_por_area(df_acomp_filtered), key="chart_pendencias_area")
     with col5b:
-        st.plotly_chart(chart_top_ofensores(dff), use_container_width=True, key="chart_top_ofensores", config=PLOTLY_CONFIG)
+        render_chart(chart_top_ofensores(dff), key="chart_top_ofensores")
 
     # Linha 4: Tendência Temporal + Acompanhamento por Solução
     col_tend, col_sol = st.columns(2)
     with col_tend:
-        st.plotly_chart(chart_tendencia(dff, filters["granularidade"]), use_container_width=True, key="chart_tendencia", config=PLOTLY_CONFIG)
+        render_chart(chart_tendencia(dff, filters["granularidade"]), key="chart_tendencia")
     with col_sol:
-        st.plotly_chart(chart_solucoes(dff, filters["granularidade"]), use_container_width=True, key="chart_solucoes", config=PLOTLY_CONFIG)
+        render_chart(chart_solucoes(dff, filters["granularidade"]), key="chart_solucoes")
 
     # Linha 5: Heatmap + Status do Acompanhamento
     col5, col6 = st.columns(2)
     with col5:
-        st.plotly_chart(chart_heatmap(dff), use_container_width=True, key="chart_heatmap", config=PLOTLY_CONFIG)
+        render_chart(chart_heatmap(dff), key="chart_heatmap")
     with col6:
-        st.plotly_chart(chart_acompanhamento_status(df_acomp_filtered), use_container_width=True, key="chart_acomp_status", config=PLOTLY_CONFIG)
+        render_chart(chart_acompanhamento_status(df_acomp_filtered), key="chart_acomp_status")
 
     # Linha 6: Cobertura de TAs
     col_ta1, col_ta2 = st.columns(2)
     with col_ta1:
-        st.plotly_chart(chart_cobertura_ta(dff), use_container_width=True, key="chart_cobertura_ta", config=PLOTLY_CONFIG)
+        render_chart(chart_cobertura_ta(dff), key="chart_cobertura_ta")
 
     st.markdown("---")
 

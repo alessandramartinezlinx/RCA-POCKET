@@ -15,6 +15,8 @@ import base64
 import time
 import tempfile
 import concurrent.futures
+import re
+import unicodedata
 import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -822,6 +824,174 @@ KEYWORDS_TIME_AREA = {
 }
 
 
+def _normalize_text_for_match(text: str) -> str:
+    """Normaliza texto para matching tolerante a acentos e caixa."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(text))
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return normalized.lower()
+
+
+def _empty_area_map(time_name: str = "Não Mapeado") -> dict:
+    return {
+        "time": time_name,
+        "area": "" if time_name != "Não Mapeado" else "Não Mapeado",
+        "qa_principal": "",
+        "qa_secundario": "",
+        "dev_principal": "",
+        "dev_secundario": "",
+    }
+
+
+def _text_contains_alias(texto_normalizado: str, alias_normalizado: str) -> bool:
+    """Evita falsos positivos para aliases curtos como POS ou TEF."""
+    if not texto_normalizado or not alias_normalizado:
+        return False
+
+    if len(alias_normalizado) <= 4 and alias_normalizado.replace("-", "").isalnum():
+        pattern = rf"(?<!\w){re.escape(alias_normalizado)}(?!\w)"
+        return re.search(pattern, texto_normalizado) is not None
+
+    return alias_normalizado in texto_normalizado
+
+
+def _extract_navigation_segments(texto: str) -> list[str]:
+    """Extrai segmentos de um bloco 'Caminho:' ou 'Caminho de Navegação:'."""
+    if not texto:
+        return []
+
+    lines = texto.splitlines()
+    collecting = False
+    collected: list[str] = []
+    stop_prefixes = (
+        "filtro:",
+        "resultado:",
+        "resultado exibido:",
+        "observacao:",
+        "observação:",
+        "analise:",
+        "análise:",
+        "impacto:",
+        "paliativo:",
+        "passos de reproducao:",
+        "passos de reprodução:",
+        "base de reproducao:",
+        "base de reprodução:",
+    )
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        line_normalized = _normalize_text_for_match(line)
+
+        if not collecting:
+            if line_normalized.startswith("caminho:") or line_normalized.startswith("caminho de navegacao:"):
+                collecting = True
+                after_colon = line.split(":", 1)[1].strip() if ":" in line else ""
+                if after_colon:
+                    collected.append(after_colon)
+            continue
+
+        if not line:
+            if collected:
+                break
+            continue
+
+        if line_normalized.startswith(stop_prefixes):
+            break
+
+        if re.match(r"^\d+\.", line):
+            break
+
+        collected.append(line)
+
+    if not collected:
+        return []
+
+    joined = " > ".join(collected).replace("›", ">")
+    parts = [part.strip(" >\t-") for part in joined.split(">")]
+    return [part for part in parts if part]
+
+
+def _map_from_navigation_path(texto: str, times_config: dict) -> dict:
+    """Usa o bloco 'Caminho' como sinal forte; aceita time sem área."""
+    segments = _extract_navigation_segments(texto)
+    if not segments:
+        return _empty_area_map()
+
+    normalized_segments = [_normalize_text_for_match(segment) for segment in segments]
+    matched_time_name = None
+    matched_time_index = None
+
+    for idx, segment in enumerate(normalized_segments):
+        for time_name in times_config.keys():
+            if segment == _normalize_text_for_match(time_name):
+                matched_time_name = time_name
+                matched_time_index = idx
+                break
+        if matched_time_name:
+            break
+
+    if not matched_time_name:
+        return _empty_area_map()
+
+    candidate_segments = normalized_segments[matched_time_index + 1:]
+    for area in times_config.get(matched_time_name, {}).get("areas", []):
+        aliases = list(area.get("labels_jira", []))
+        area_name = area.get("nome", "")
+        if area_name and area_name not in aliases:
+            aliases.append(area_name)
+
+        normalized_aliases = [_normalize_text_for_match(alias) for alias in aliases if alias]
+        if any(segment == alias for segment in candidate_segments for alias in normalized_aliases):
+            return {
+                "time": matched_time_name,
+                "area": area_name,
+                "qa_principal": area.get("qa_principal", ""),
+                "qa_secundario": area.get("qa_secundario", ""),
+                "dev_principal": area.get("dev_principal", ""),
+                "dev_secundario": area.get("dev_secundario", ""),
+            }
+
+    return _empty_area_map(matched_time_name)
+
+
+def _map_area_from_text_alias(texto: str, times_config: dict) -> dict:
+    """Prioriza nomes/aliases reais da área quando aparecerem no texto da issue."""
+    texto_normalizado = _normalize_text_for_match(texto)
+    best_match = None
+
+    for time_name, time_data in times_config.items():
+        for area in time_data.get("areas", []):
+            aliases = list(area.get("labels_jira", []))
+            area_name = area.get("nome", "")
+            if area_name and area_name not in aliases:
+                aliases.append(area_name)
+
+            for alias in aliases:
+                alias_normalizado = _normalize_text_for_match(alias)
+                if not alias_normalizado:
+                    continue
+                if _text_contains_alias(texto_normalizado, alias_normalizado):
+                    score = (len(alias_normalizado.split()), len(alias_normalizado))
+                    if best_match is None or score > best_match["score"]:
+                        best_match = {
+                            "score": score,
+                            "time": time_name,
+                            "area": area_name,
+                            "qa_principal": area.get("qa_principal", ""),
+                            "qa_secundario": area.get("qa_secundario", ""),
+                            "dev_principal": area.get("dev_principal", ""),
+                            "dev_secundario": area.get("dev_secundario", ""),
+                        }
+
+    if best_match:
+        best_match.pop("score", None)
+        return best_match
+
+    return _empty_area_map()
+
+
 def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
     """
     Infere Time/Área/Responsáveis analisando texto (resumo + descrição).
@@ -834,7 +1004,15 @@ def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
     Returns:
         dict com time, area, qa_principal, dev_principal ou "Não Mapeado" se sem match
     """
-    texto_lower = texto.lower()
+    path_map = _map_from_navigation_path(texto, times_config)
+    if path_map["time"] != "Não Mapeado":
+        return path_map
+
+    area_from_alias = _map_area_from_text_alias(texto, times_config)
+    if area_from_alias["time"] != "Não Mapeado" and area_from_alias["area"] != "Não Mapeado":
+        return area_from_alias
+
+    texto_normalizado = _normalize_text_for_match(texto)
     
     melhor_match = None
     melhor_score = 0
@@ -844,7 +1022,10 @@ def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
     # Busca por keywords
     for time_name, areas_keywords in KEYWORDS_TIME_AREA.items():
         for area_nome, keywords in areas_keywords.items():
-            score = sum(1 for keyword in keywords if keyword in texto_lower)
+            score = sum(
+                1 for keyword in keywords
+                if _text_contains_alias(texto_normalizado, _normalize_text_for_match(keyword))
+            )
             
             if score > melhor_score:
                 melhor_score = score
@@ -868,14 +1049,7 @@ def inferir_time_area_por_texto(texto: str, times_config: dict) -> dict:
                 }
     
     # Sem match: retorna "Não Mapeado"
-    return {
-        "time": "Não Mapeado",
-        "area": "Não Mapeado",
-        "qa_principal": "",
-        "qa_secundario": "",
-        "dev_principal": "",
-        "dev_secundario": "",
-    }
+    return _empty_area_map()
 
 
 def _clean_jira_wiki_markup(text: str) -> str:
