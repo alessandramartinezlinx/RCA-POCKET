@@ -64,12 +64,27 @@ def _make_thin_border():
     return Border(left=side, right=side, top=side, bottom=side)
 
 
+def _opaque_color(color: str) -> str:
+    """Normaliza cores RGB para ARGB opaco.
+
+    O Excel Online fica inconsistente quando o fill é salvo com alpha 00.
+    """
+    color = (color or "").strip().replace("#", "").upper()
+    if len(color) == 6:
+        return f"FF{color}"
+    return color
+
+
+def _solid_fill(color: str) -> PatternFill:
+    return PatternFill("solid", fgColor=_opaque_color(color))
+
+
 def _header_style(ws, row, cols: list, bg=HEADER_BG, fg=HEADER_FG, bold=True):
     for col_idx, val in enumerate(cols, start=1):
         cell = ws.cell(row=row, column=col_idx)
         cell.value = val
         cell.font = Font(bold=bold, color=fg, size=10)
-        cell.fill = PatternFill("solid", fgColor=bg)
+        cell.fill = _solid_fill(bg)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = _make_thin_border()
 
@@ -85,7 +100,7 @@ def _set_col_widths(ws, widths: dict):
 def _apply_alt_rows(ws, start_row: int, end_row: int, n_cols: int):
     for row in range(start_row, end_row + 1):
         bg = ALT_ROW_BG if row % 2 == 0 else WHITE
-        fill = PatternFill("solid", fgColor=bg)
+        fill = _solid_fill(bg)
         for col in range(1, n_cols + 1):
             cell = ws.cell(row=row, column=col)
             if cell.fill.fgColor.rgb in ("00000000", "FFFFFFFF", WHITE, ALT_ROW_BG):
@@ -179,18 +194,18 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     _header_style(ws, 1, headers, bg=_BG_BLOCO1)
     for ci in range(12, 16):   # L–O → bloco 2
         cell = ws.cell(row=1, column=ci)
-        cell.fill = PatternFill("solid", fgColor=_BG_BLOCO2)
+        cell.fill = _solid_fill(_BG_BLOCO2)
     for ci in range(16, 29):  # P–AB → bloco 3
         cell = ws.cell(row=1, column=ci)
-        cell.fill = PatternFill("solid", fgColor=_BG_BLOCO3)
+        cell.fill = _solid_fill(_BG_BLOCO3)
 
     _set_col_widths(ws, {col[0]: col[2] for col in DADOS_COLS})
 
     # ── Fills pastel por bloco (aplicados em TODAS as linhas de dados) ────────
-    fill_b1     = PatternFill("solid", fgColor="D6E4F0")  # azul pastel    — A–K
-    fill_b2     = PatternFill("solid", fgColor="E8EAED")  # cinza-azul pastel — L–O
-    fill_b3     = PatternFill("solid", fgColor="EBF1DE")  # verde pastel   — P–AB
-    fill_frozen = PatternFill("solid", fgColor="EFF6FF")  # azul claro — linhas congeladas
+    fill_b1     = _solid_fill("D6E4F0")  # azul pastel    — A–K
+    fill_b2     = _solid_fill("E8EAED")  # cinza-azul pastel — L–O
+    fill_b3     = _solid_fill("EBF1DE")  # verde pastel   — P–AB
+    fill_frozen = _solid_fill("EFF6FF")  # azul claro — linhas congeladas
 
     # ── Validações — string inline com unicode explícito (compatível Excel + LibreOffice) ──────
     _sim_nao = '"Sim,N\u00e3o"'   # "Sim,Não"
@@ -270,7 +285,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
             _m("plano_acao_licao_aprendida"),              # Z  Plano Ação/Lição Aprendida ← manual
             _m("analisado"),                               # AA Analisado ← manual
-            issue.get("_data_filtragem", ""),              # AB Data da filtragem
+            _to_excel_date(issue.get("_data_filtragem", "")),  # AB Data da filtragem
         ]
 
         # Escreve valores base
@@ -297,8 +312,8 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             kc.hyperlink = link
         kc.font = Font(color="0563C1", underline="single", size=9, bold=True)
 
-        # E (5) e F (6): formato de data
-        for dc in [5, 6]:
+        # E (5), F (6) e AB (28): formato de data
+        for dc in [5, 6, 28]:
             c = ws.cell(row=row_idx, column=dc)
             if c.value:
                 c.number_format = "DD/MM/YYYY"
@@ -316,7 +331,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         prio_color = colors_prio.get(issue.get("prioridade", ""))
         if prio_color:
             is_dark = issue.get("prioridade") in ("Crítica", "Alta")
-            prio_cell.fill = PatternFill("solid", fgColor=prio_color)
+            prio_cell.fill = _solid_fill(prio_color)
             prio_cell.font = Font(bold=True, size=9,
                                   color="FFFFFF" if is_dark else "333333")
 
@@ -326,7 +341,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
                          "Em Análise": STATUS_EM_ANALISE, "Aberto": STATUS_ABERTO}
         st_color = colors_status.get(issue.get("status", ""))
         if st_color:
-            status_cell.fill = PatternFill("solid", fgColor=st_color)
+            status_cell.fill = _solid_fill(st_color)
 
         # AA (27): Data da filtragem/sync
         semana_cell = ws.cell(row=row_idx, column=27)
@@ -337,10 +352,10 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         vinc_cell = ws.cell(row=row_idx, column=10)
         qtd_vinc = issue.get("qtd_vinculos", 0)
         if qtd_vinc >= 5:
-            vinc_cell.fill = PatternFill("solid", fgColor="FFC7CE")  # vermelho claro
+            vinc_cell.fill = _solid_fill("FFC7CE")  # vermelho claro
             vinc_cell.font = Font(bold=True, size=9, color="9C0006")
         elif qtd_vinc >= 3:
-            vinc_cell.fill = PatternFill("solid", fgColor="FFEB9C")  # amarelo
+            vinc_cell.fill = _solid_fill("FFEB9C")  # amarelo
             vinc_cell.font = Font(bold=True, size=9, color="9C6500")
 
         # S (19): Arquivo TA — preenchido por matching de similaridade
@@ -514,7 +529,7 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
         # Cor por Status (F=6)
         sc = colors_acomp.get(status_val)
         if sc:
-            ws.cell(row=row_idx, column=6).fill = PatternFill("solid", fgColor=sc)
+            ws.cell(row=row_idx, column=6).fill = _solid_fill(sc)
         
         row_idx += 1
 
@@ -569,7 +584,7 @@ def _build_responsaveis(ws, times_config: dict):
 
             bg = ALT_ROW_BG if row_idx % 2 == 0 else WHITE
             for col_idx in range(1, 7):
-                ws.cell(row=row_idx, column=col_idx).fill = PatternFill("solid", fgColor=bg)
+                ws.cell(row=row_idx, column=col_idx).fill = _solid_fill(bg)
 
             row_idx += 1
 
@@ -833,7 +848,7 @@ def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
     _header_style(ws, 1, headers, bg=_BG_ARQUIVO)
     _set_col_widths(ws, {col[0]: col[2] for col in ARQUIVO_COLS})
 
-    fill_arq = PatternFill("solid", fgColor="FFF8E1")  # amarelo claro
+    fill_arq = _solid_fill("FFF8E1")  # amarelo claro
 
     dados_analisados = preserved.get("dados_analisados", {})
     dados_manual     = preserved.get("dados_manual_cols", {})
@@ -872,8 +887,8 @@ def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
             _v("Análise da Causa", None, "analise_causa"),       # K Análise
             _v("Tipo de Ajuste", None, "ajuste_realizado"),      # L Tipo Ajuste
             _v("Problema Resolvido?", None, "problema_resolvido"),  # M Problema Resolvido
-            _v("Data Filtragem") or issue.get("_data_filtragem", ""),  # N Data Filtragem
-            hoje_str,                                             # O Data Arquivamento
+            _to_excel_date(_v("Data Filtragem") or issue.get("_data_filtragem", "")),  # N Data Filtragem
+            _to_excel_date(hoje_str),                             # O Data Arquivamento
         ]
 
         for ci, val in enumerate(vals, start=1):
@@ -889,8 +904,8 @@ def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
             kc.hyperlink = link
         kc.font = Font(color="0563C1", underline="single", size=9, bold=True)
 
-        # E, F: formato de data
-        for dc in [5, 6]:
+        # E, F, N, O: formato de data
+        for dc in [5, 6, 14, 15]:
             c = ws.cell(row=row_idx, column=dc)
             if c.value:
                 c.number_format = "DD/MM/YYYY"
