@@ -66,7 +66,7 @@ cache:
   parallel_pagination: false
 
 excel:
-  arquivo_saida: "c:/Users/alessandra.martinez/OneDrive - Linx SA/RCA_Pocket.xlsx"
+  arquivo_saida: "RCA_Pocket.xlsx"
   # Issues com Analisado=Sim e importadas há mais de X dias vão para a aba "📦 Arquivo"
   dias_retencao: 30
   # Caminho do arquivo na pasta do OneDrive para salvar automaticamente uma cópia
