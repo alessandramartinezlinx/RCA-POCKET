@@ -400,12 +400,12 @@ def build_sidebar(df: pd.DataFrame):
         granularidade = st.radio("Tendência por:", ["Semana", "Mês"], index=1, horizontal=True)
         auto_refresh = st.toggle(
             "Autoatualizar",
-            value=True,
+            value=False,
             key="auto_refresh",
             help=f"Verifica mudanças nos arquivos de dados a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.",
         )
         if auto_refresh:
-            st.caption(f"Atualização automática ativa a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.")
+            st.caption(f"Atualização automática experimental ativa a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.")
 
         st.markdown("---")
         col_btn1, col_btn2 = st.columns(2)
