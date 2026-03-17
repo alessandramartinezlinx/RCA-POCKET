@@ -19,10 +19,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-import yaml
 
 # Garante que o módulo jira_client está no path
 sys.path.insert(0, str(Path(__file__).parent))
+from config_loader import load_config as load_project_config
 from jira_client import JiraClient
 
 # =============================================================================
@@ -88,9 +88,7 @@ st.markdown("""
 
 @st.cache_data(ttl=300)
 def load_config():
-    config_path = Path(__file__).parent / "rca_config.yaml"
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return load_project_config(__file__)
 
 
 # Mapeamento: cabeçalhos do Excel → nomes internos do dashboard
@@ -1226,6 +1224,20 @@ def render_detail_table(dff: pd.DataFrame):
     )
 
 
+def filter_acompanhamento(df_acomp: pd.DataFrame, dff: pd.DataFrame) -> pd.DataFrame:
+    """Filtra acompanhamento pelas issues visíveis só quando há vínculo preenchido."""
+    if df_acomp.empty or "issue_original" not in df_acomp.columns or dff.empty or "key" not in dff.columns:
+        return df_acomp
+
+    issue_original = df_acomp["issue_original"].astype(str).str.strip()
+    linked_mask = issue_original.ne("") & issue_original.ne("nan")
+    if not linked_mask.any():
+        return df_acomp
+
+    filtered_keys = set(dff["key"].astype(str).tolist())
+    return df_acomp[df_acomp["issue_original"].astype(str).str.strip().isin(filtered_keys)]
+
+
 
 # =============================================================================
 # MAIN
@@ -1242,12 +1254,8 @@ def main():
     start_auto_refresh_watcher(config, filters["auto_refresh"])
     dff = apply_filters(df, filters)
 
-    # Filtrar aba Acompanhamento pelas issues filtradas (coluna "Issue Original")
-    if "issue_original" in df_acomp.columns and len(dff) > 0:
-        filtered_keys = set(dff["key"].tolist())
-        df_acomp_filtered = df_acomp[df_acomp["issue_original"].isin(filtered_keys)]
-    else:
-        df_acomp_filtered = df_acomp
+    # Filtra acompanhamento somente quando a coluna de vínculo está preenchida.
+    df_acomp_filtered = filter_acompanhamento(df_acomp, dff)
 
     # Header
     st.title("🎯 RCA Pocket — Dashboard de Incidências")

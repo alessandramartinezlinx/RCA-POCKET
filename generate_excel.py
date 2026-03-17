@@ -31,6 +31,7 @@ from openpyxl.formatting.rule import CellIsRule, FormulaRule
 
 from jira_client import JiraClient, MOCK_ACTIONS
 from indexar_testes import carregar_indice, buscar_tas_relacionados
+from config_loader import load_config as load_project_config
 
 # =============================================================================
 # PALETA DE CORES
@@ -147,7 +148,7 @@ DADOS_COLS = [
     ("M", "Área",                      18),
     ("N", "Tipo Erro (Auto)",          18),
     ("O", "Ação Realizada no Bug",     50),
-    # ── BLOCO 3: Análise Manual (cabeçalho verde P–AA) ───────────────────────
+    # ── BLOCO 3: Análise Manual (cabeçalho verde P–AB) ───────────────────────
     ("P", "Análise da Causa",          40),
     ("Q", "Tipo de Ajuste",            22),
     ("R", "Possui TA",                 14),
@@ -158,14 +159,15 @@ DADOS_COLS = [
     ("W", "QA Principal",              18),
     ("X", "Dev Principal",             18),
     ("Y", "Issue de Acompanhamento",   18),
-    ("Z", "Analisado",                 14),
-    ("AA", "Data Filtragem",            14),
+    ("Z", "Plano Ação/Lição Aprendida", 32),
+    ("AA", "Analisado",                14),
+    ("AB", "Data Filtragem",           14),
 ]
 
 # Cores dos 3 blocos de cabeçalho
 _BG_BLOCO1 = "1F4E79"   # azul escuro  — A–K (dados Jira + vínculos + causa raiz)
 _BG_BLOCO2 = "44546A"   # slate        — L–O (categorização)
-_BG_BLOCO3 = "375623"   # verde escuro — P–AA (análise manual)
+_BG_BLOCO3 = "375623"   # verde escuro — P–AB (análise manual)
 
 def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     ws.title = "📊 Dados"
@@ -178,7 +180,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     for ci in range(12, 16):   # L–O → bloco 2
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO2)
-    for ci in range(16, 28):  # P–AA → bloco 3 (13 colunas)
+    for ci in range(16, 29):  # P–AB → bloco 3
         cell = ws.cell(row=1, column=ci)
         cell.fill = PatternFill("solid", fgColor=_BG_BLOCO3)
 
@@ -187,7 +189,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     # ── Fills pastel por bloco (aplicados em TODAS as linhas de dados) ────────
     fill_b1     = PatternFill("solid", fgColor="D6E4F0")  # azul pastel    — A–K
     fill_b2     = PatternFill("solid", fgColor="E8EAED")  # cinza-azul pastel — L–O
-    fill_b3     = PatternFill("solid", fgColor="EBF1DE")  # verde pastel   — P–AA
+    fill_b3     = PatternFill("solid", fgColor="EBF1DE")  # verde pastel   — P–AB
     fill_frozen = PatternFill("solid", fgColor="EFF6FF")  # azul claro — linhas congeladas
 
     # ── Validações — string inline com unicode explícito (compatível Excel + LibreOffice) ──────
@@ -266,8 +268,9 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             issue.get("qa_principal", ""),                 # W  QA Principal
             issue.get("dev_principal", ""),                # X  Dev Principal
             _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
-            _m("analisado"),                               # Z  Analisado ← manual
-            issue.get("_data_filtragem", ""),               # AA Data da filtragem
+            _m("plano_acao_licao_aprendida"),              # Z  Plano Ação/Lição Aprendida ← manual
+            _m("analisado"),                               # AA Analisado ← manual
+            issue.get("_data_filtragem", ""),              # AB Data da filtragem
         ]
 
         # Escreve valores base
@@ -280,7 +283,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         # Aplica cor pastel de bloco em TODAS as células da linha
         for ci in range(1, 12):   ws.cell(row=row_idx, column=ci).fill = fill_b1  # A-K
         for ci in range(12, 16):  ws.cell(row=row_idx, column=ci).fill = fill_b2  # L-O
-        for ci in range(16, 28):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-AA
+        for ci in range(16, 29):  ws.cell(row=row_idx, column=ci).fill = fill_b3  # P-AB
 
         # G (7): fórmula — diferença em dias entre datas
         g_cell = ws.cell(row=row_idx, column=7)
@@ -344,7 +347,16 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if ta_indice and not manual.get("arquivo_ta"):
             resumo = issue.get("resumo", "")
             area = issue.get("area", "")
-            matches = buscar_tas_relacionados(resumo, area, ta_indice, top_n=5)
+            matches = buscar_tas_relacionados(
+                resumo,
+                area,
+                ta_indice,
+                acao_realizada=issue.get("acao_realizada", ""),
+                causa_raiz=_m("causa_raiz"),
+                analise_causa=_m("analise_causa"),
+                contexto=_m("contexto"),
+                top_n=5,
+            )
             if matches:
                 ta_cell = ws.cell(row=row_idx, column=19)
                 nomes = [m["nome"] for m in matches[:3]]
@@ -367,7 +379,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     dv_possui_ta.sqref      = "R2:R{sfx}".format(sfx=sfx)
     dv_resultado_auto.sqref = "T2:T{sfx}".format(sfx=sfx)
     dv_prob_res.sqref       = "V2:V{sfx}".format(sfx=sfx)
-    dv_analisado.sqref      = "Z2:Z{sfx}".format(sfx=sfx)
+    dv_analisado.sqref      = "AA2:AA{sfx}".format(sfx=sfx)
     ws.add_data_validation(dv_ajuste)
     ws.add_data_validation(dv_possui_ta)
     ws.add_data_validation(dv_resultado_auto)
@@ -389,8 +401,9 @@ ACOMP_COLS = [
     ("D", "Área",                  22),
     ("E", "Ação",                 45),
     ("F", "Status da Ação",       18),
-    ("G", "Data Conclusão",       14),
-    ("H", "Observação",           40),
+    ("G", "Data Limite",          14),
+    ("H", "Data Conclusão",       14),
+    ("I", "Observação",           40),
 ]
 
 
@@ -451,6 +464,7 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
                 "area":           issue.get("acomp_area", ""),
                 "acao":           issue.get("acomp_acao", ""),
                 "status_acao":    issue.get("acomp_status_acao", ""),
+                "data_limite":    issue.get("acomp_data_limite"),
                 "data_conclusao": issue.get("acomp_data_conclusao"),
                 "observacao":     "",
             }
@@ -472,27 +486,30 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
         if link:
             cell_orig.hyperlink = link
 
-        # C–H: dados manuais (preservados entre gerações)
+        # C–I: dados manuais (preservados entre gerações)
         status_val = acomp_data.get("status_acao", "")
         vals_manual = [
             acomp_data.get("responsavel", ""),           # C
             acomp_data.get("area", ""),                  # D
             acomp_data.get("acao", ""),                  # E
             status_val,                                   # F
+            (_to_excel_date(acomp_data["data_limite"])
+             if acomp_data.get("data_limite") else None),     # G
             (_to_excel_date(acomp_data["data_conclusao"])
-             if acomp_data.get("data_conclusao") else None),  # G
-            acomp_data.get("observacao", ""),            # H
+             if acomp_data.get("data_conclusao") else None),  # H
+            acomp_data.get("observacao", ""),                 # I
         ]
         for ci, val in enumerate(vals_manual, start=3):
             cell           = ws.cell(row=row_idx, column=ci, value=val)
             cell.border    = _make_thin_border()
             cell.font      = Font(size=9)
-            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 8))
+            cell.alignment = Alignment(vertical="center", wrap_text=(ci == 9))
 
-        # Data Conclusão (G=7) — formato de data
-        dcf = ws.cell(row=row_idx, column=7)
-        if dcf.value:
-            dcf.number_format = "DD/MM/YYYY"
+        # Datas (G/H) — formato de data
+        for dc in [7, 8]:
+            dcf = ws.cell(row=row_idx, column=dc)
+            if dcf.value:
+                dcf.number_format = "DD/MM/YYYY"
 
         # Cor por Status (F=6)
         sc = colors_acomp.get(status_val)
@@ -580,9 +597,8 @@ def _read_existing_manual_data(filepath: str) -> dict:
           "acompanhamento":    [{item, key, data_criacao, responsavel, acao,
                                  status_acao, data_conclusao, observacao}, ...],
         }
-    Colunas manuais da aba Dados (lookup por nome de cabeçalho):
-        L Tipo de Ajuste, M Possui TA, N Problema Resolvido?,
-        O Item p/ Resolução Def., R Analisado (última coluna)
+    Colunas manuais da aba Dados são localizadas por nome de cabeçalho
+    para preservar compatibilidade mesmo quando a posição muda.
     """
     result: dict = {
         "dados_analisados":  {},
@@ -614,6 +630,7 @@ def _read_existing_manual_data(filepath: str) -> dict:
             col_contexto  = header.index("Contexto")               if "Contexto"                in header else None
             col_prob      = header.index("Problema Resolvido?")    if "Problema Resolvido?"    in header else None
             col_issue_acomp = header.index("Issue de Acompanhamento") if "Issue de Acompanhamento" in header else None
+            col_plano_acao = header.index("Plano Ação/Lição Aprendida") if "Plano Ação/Lição Aprendida" in header else None
             col_semana    = None
             for col_name_semana in ("Data Filtragem", "Semana"):
                 if col_name_semana in header:
@@ -631,6 +648,7 @@ def _read_existing_manual_data(filepath: str) -> dict:
                 "contexto":           col_contexto,
                 "problema_resolvido": col_prob,
                 "issue_acompanhamento": col_issue_acomp,
+                "plano_acao_licao_aprendida": col_plano_acao,
                 "analisado":          col_analisado,
                 "semana":             col_semana,
             }
@@ -684,8 +702,9 @@ def _read_existing_manual_data(filepath: str) -> dict:
                     "area":           row[4] or "" if len(row) > 4 else "",
                     "acao":           row[5] or "" if len(row) > 5 else "",
                     "status_acao":    row[6] or "" if len(row) > 6 else "",
-                    "data_conclusao": row[7] or None if len(row) > 7 else None,
-                    "observacao":     row[8] or "" if len(row) > 8 else "",
+                    "data_limite":    row[7] or None if len(row) > 7 else None,
+                    "data_conclusao": row[8] or None if len(row) > 8 else None,
+                    "observacao":     row[9] or "" if len(row) > 9 else "",
                 })
 
         wb.close()
@@ -1058,8 +1077,5 @@ def generate_excel(config: dict, output_path: str = None):
 
 
 if __name__ == "__main__":
-    config_path = Path(__file__).parent / "rca_config.yaml"
-    with open(config_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-
+    cfg = load_project_config(__file__)
     generate_excel(cfg)

@@ -28,6 +28,7 @@ GITHUB_REPO = "MEDIUM-RETAIL-MICROVIX/ta-robotframework"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 INDEX_FILE = "data/ta_test_index.json"
 CACHE_MAX_DAYS = 7
+INDEX_SCHEMA_VERSION = 2
 
 STOPWORDS = {
     "de", "do", "da", "dos", "das", "no", "na", "nos", "nas",
@@ -56,6 +57,18 @@ def extrair_keywords(texto: str, min_len: int = 3) -> List[str]:
     palavras = texto.split()
     keywords = [p for p in palavras if p not in STOPWORDS and len(p) >= min_len]
     return list(dict.fromkeys(keywords))  # deduplica preservando ordem
+
+
+def combinar_keywords(*partes: str) -> List[str]:
+    """Combina várias fontes textuais em uma lista única de keywords."""
+    combined: List[str] = []
+    for parte in partes:
+        if not parte:
+            continue
+        for keyword in extrair_keywords(parte):
+            if keyword not in combined:
+                combined.append(keyword)
+    return combined
 
 
 # =============================================================================
@@ -168,6 +181,29 @@ def indexar_testes_github() -> List[Dict]:
             downloaded += 1
 
             in_test_cases = False
+            current_test = None
+
+            def flush_current_test():
+                if not current_test:
+                    return
+                documentation = " ".join(current_test.get("documentation_lines", [])).strip()
+                steps = " ".join(current_test.get("step_lines", [])[:8]).strip()
+                texto_para_keywords = " ".join(filter(None, [
+                    current_test["nome"],
+                    current_test["path"].replace("/", " ").replace("_", " ").replace(".robot", ""),
+                    documentation,
+                    steps,
+                ]))
+                kws = extrair_keywords(texto_para_keywords)
+                tests_from_content.append({
+                    "nome": current_test["nome"],
+                    "path": current_test["path"],
+                    "sistema": current_test["sistema"],
+                    "documentacao": documentation,
+                    "passos": current_test.get("step_lines", [])[:8],
+                    "keywords": kws,
+                })
+
             for line in content.split("\n"):
                 stripped = line.rstrip()
                 # Linha de seção
@@ -175,6 +211,8 @@ def indexar_testes_github() -> List[Dict]:
                     in_test_cases = True
                     continue
                 elif stripped.strip().startswith("***"):
+                    flush_current_test()
+                    current_test = None
                     in_test_cases = False
                     continue
 
@@ -183,23 +221,33 @@ def indexar_testes_github() -> List[Dict]:
 
                 # Test case name = linha que começa na coluna 0 (sem indentação)
                 if stripped and not stripped[0].isspace():
+                    flush_current_test()
                     # Ignora linhas que parecem keywords/settings
                     if stripped.startswith(("[", "#", "...", "$", "%", "&", "@")):
+                        current_test = None
                         continue
                     nome = stripped.strip()
                     if len(nome) < 5:
+                        current_test = None
                         continue
-
-                    # Keywords do nome + path combinados
-                    texto_para_keywords = nome + " " + item.path.replace("/", " ").replace("_", " ").replace(".robot", "")
-                    kws = extrair_keywords(texto_para_keywords)
-
-                    tests_from_content.append({
+                    current_test = {
                         "nome": nome,
                         "path": item.path,
                         "sistema": sistema,
-                        "keywords": kws,
-                    })
+                        "documentation_lines": [],
+                        "step_lines": [],
+                    }
+                    continue
+
+                if current_test and stripped.strip():
+                    linha = stripped.strip()
+                    linha_norm = normalizar(linha)
+                    if linha_norm.startswith("[documentation]"):
+                        current_test["documentation_lines"].append(linha.split("]", 1)[-1].strip())
+                    elif not linha.startswith(("[", "#", "...")):
+                        current_test["step_lines"].append(linha)
+
+            flush_current_test()
         except Exception:
             continue
 
@@ -222,6 +270,8 @@ def carregar_indice() -> List[Dict]:
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if data.get("schema_version") != INDEX_SCHEMA_VERSION:
+            print("⚠️  Índice em formato antigo. Use reindexação para melhorar a precisão da busca de TAs.")
         ts = datetime.fromisoformat(data.get("timestamp", "2000-01-01"))
         if datetime.now() - ts > timedelta(days=CACHE_MAX_DAYS):
             print(f"⚠️  Índice expirado ({CACHE_MAX_DAYS} dias). Re-indexando...")
@@ -238,6 +288,7 @@ def salvar_indice(testes: List[Dict]):
     os.makedirs(os.path.dirname(INDEX_FILE), exist_ok=True)
     with open(INDEX_FILE, "w", encoding="utf-8") as f:
         json.dump({
+            "schema_version": INDEX_SCHEMA_VERSION,
             "timestamp": datetime.now().isoformat(),
             "total_testes": len(testes),
             "testes": testes,
@@ -264,6 +315,10 @@ def obter_indice(forcar: bool = False) -> List[Dict]:
 
 def buscar_tas_relacionados(resumo: str, area: str,
                             testes: List[Dict],
+                            acao_realizada: str = "",
+                            causa_raiz: str = "",
+                            analise_causa: str = "",
+                            contexto: str = "",
                             top_n: int = 8) -> List[Dict]:
     """
     Busca TAs relacionados a um bug baseando-se em palavras-chave.
@@ -280,21 +335,46 @@ def buscar_tas_relacionados(resumo: str, area: str,
     if not testes or not resumo:
         return []
 
-    keywords_issue = extrair_keywords(resumo)
     area_norm = normalizar(area) if area else ""
     area_kws = extrair_keywords(area) if area else []
+    resumo_kws = extrair_keywords(resumo)
+    acao_kws = extrair_keywords(acao_realizada) if acao_realizada else []
+    causa_kws = extrair_keywords(causa_raiz) if causa_raiz else []
+    analise_kws = extrair_keywords(analise_causa) if analise_causa else []
+    contexto_kws = extrair_keywords(contexto) if contexto else []
 
-    # Combina keywords do resumo + área
-    all_issue_kws = list(dict.fromkeys(keywords_issue + area_kws))
-
-    if not all_issue_kws:
+    if not any([resumo_kws, area_kws, acao_kws, causa_kws, analise_kws, contexto_kws]):
         return []
+
+    issue_field_keywords = {
+        "resumo": resumo_kws,
+        "area": area_kws,
+        "acao_realizada": acao_kws,
+        "causa_raiz": causa_kws,
+        "analise_causa": analise_kws,
+        "contexto": contexto_kws,
+    }
+    field_weights = {
+        "resumo": 4,
+        "area": 3,
+        "acao_realizada": 2,
+        "causa_raiz": 2,
+        "analise_causa": 2,
+        "contexto": 1,
+    }
 
     resultados = []
     for test in testes:
         score = 0
         matched_kws = []
         test_kw_set = set(test.get("keywords", []))
+        test_blob = normalizar(" ".join(filter(None, [
+            test.get("nome", ""),
+            test.get("path", ""),
+            test.get("sistema", ""),
+            test.get("documentacao", ""),
+            " ".join(test.get("passos", [])),
+        ])))
 
         if not test_kw_set:
             continue
@@ -309,27 +389,43 @@ def buscar_tas_relacionados(resumo: str, area: str,
                     score += 1
                     break
 
-        # 2) Match exato de keywords
-        for kw in all_issue_kws:
-            if kw in test_kw_set:
-                score += 3
-                matched_kws.append(kw)
+        # 2) Match exato/forte por campo
+        for field_name, kws in issue_field_keywords.items():
+            field_weight = field_weights[field_name]
+            for kw in kws:
+                if kw in test_kw_set:
+                    score += field_weight
+                    matched_kws.append(f"{field_name}:{kw}")
+                elif len(kw) >= 4 and kw in test_blob:
+                    score += max(1, field_weight - 1)
+                    matched_kws.append(f"{field_name}:{kw}*")
 
-        # 3) Match parcial (substring) para keywords >= 4 chars
-        if score < 3:  # só se não teve muitos matches exatos
-            for kw in all_issue_kws:
-                if len(kw) >= 4 and kw not in matched_kws:
+        # 3) Match parcial (substring) para keywords >= 5 chars
+        if score < 5:
+            for field_name, kws in issue_field_keywords.items():
+                for kw in kws:
+                    if len(kw) < 5:
+                        continue
                     for tk in test_kw_set:
-                        if len(tk) >= 4 and (kw in tk or tk in kw):
+                        if len(tk) >= 5 and (kw in tk or tk in kw):
                             score += 1
-                            matched_kws.append(f"{kw}≈{tk}")
+                            matched_kws.append(f"{field_name}:{kw}≈{tk}")
                             break
+
+        # 4) Bônus para frases fortes no path/nome/documentação do TA
+        strong_phrases = [resumo, area, acao_realizada, causa_raiz]
+        for phrase in strong_phrases:
+            phrase_norm = normalizar(phrase)
+            if phrase_norm and len(phrase_norm) >= 8 and phrase_norm in test_blob:
+                score += 3
+                matched_kws.append(f"phrase:{phrase[:30]}")
 
         if score >= 3 and matched_kws:
             resultados.append({
                 "nome": test["nome"],
                 "path": test["path"],
                 "sistema": test.get("sistema", ""),
+                "documentacao": test.get("documentacao", ""),
                 "score": score,
                 "keywords_matched": matched_kws,
             })
@@ -367,7 +463,15 @@ def buscar_tas_para_issues(issues: List[Dict], testes: List[Dict]) -> Dict[str, 
         resumo = issue.get("resumo", "")
         area = issue.get("area", "")
         if key and resumo:
-            resultado[key] = buscar_tas_relacionados(resumo, area, testes)
+            resultado[key] = buscar_tas_relacionados(
+                resumo,
+                area,
+                testes,
+                acao_realizada=issue.get("acao_realizada", ""),
+                causa_raiz=issue.get("causa_raiz", ""),
+                analise_causa=issue.get("analise_causa", ""),
+                contexto=issue.get("contexto", ""),
+            )
     return resultado
 
 
@@ -404,7 +508,15 @@ def main():
             key = issue.get("key", "")
             resumo = issue.get("resumo", "")
             area = issue.get("area", "")
-            matches = buscar_tas_relacionados(resumo, area, testes)
+            matches = buscar_tas_relacionados(
+                resumo,
+                area,
+                testes,
+                acao_realizada=issue.get("acao_realizada", ""),
+                causa_raiz=issue.get("causa_raiz", ""),
+                analise_causa=issue.get("analise_causa", ""),
+                contexto=issue.get("contexto", ""),
+            )
 
             print(f"\n{'─'*60}")
             print(f"📌 {key}: {resumo[:70]}")

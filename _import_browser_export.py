@@ -3,9 +3,9 @@ Importa JSON exportado via browser (API Jira /rest/api/2/search)
 e converte para o formato de cache do rca-pocket.
 """
 import json
-import yaml
 from datetime import datetime, timezone
 from pathlib import Path
+from config_loader import load_config as load_project_config
 from jira_client import normalize_issue
 
 EXPORT_FILE = Path("data/jira_export_browser.json")
@@ -13,8 +13,7 @@ CACHE_FILE = Path("data/issues_cache.json")
 SYNC_FILE = Path("data/last_sync.txt")
 
 # Carrega config
-with open("rca_config.yaml", encoding="utf-8") as f:
-    config = yaml.safe_load(f)
+config = load_project_config()
 
 # Carrega export do browser
 with open(EXPORT_FILE, encoding="utf-8") as f:

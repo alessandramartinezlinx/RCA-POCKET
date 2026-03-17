@@ -1916,11 +1916,9 @@ def load_normalized_issues(config: dict) -> list:
 
 
 if __name__ == "__main__":
-    import yaml
+    from config_loader import load_config as load_project_config
 
-    config_path = Path(__file__).parent / "rca_config.yaml"
-    with open(config_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    cfg = load_project_config(__file__)
 
     issues = load_normalized_issues(cfg)
     print(f"\n✅ {len(issues)} issues carregadas")

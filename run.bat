@@ -14,6 +14,8 @@ cd /d "%~dp0"
 :: ─── Lê URL do SharePoint do config ─────────────────────────────────────────
 set SHAREPOINT_URL=
 for /f "delims=" %%U in ('python _get_config.py excel sharepoint_url 2^>nul') do set SHAREPOINT_URL=%%U
+set EXCEL_SOURCE=
+for /f "delims=" %%U in ('python _get_config.py excel arquivo_saida 2^>nul') do set EXCEL_SOURCE=%%U
 
 :: ─── Verifica Python ─────────────────────────────────────────────────────────
 where python >nul 2>&1
@@ -137,6 +139,17 @@ pause
 goto FIM
 
 :PUBLISH_EXCEL_ROUTINE
+if not "%EXCEL_SOURCE%"=="" (
+    if /i not "%EXCEL_SOURCE%"=="RCA_Pocket.xlsx" (
+        if /i not "%EXCEL_SOURCE%"=="%CD%\\RCA_Pocket.xlsx" (
+            if exist "%EXCEL_SOURCE%" (
+                echo 🔄 Copiando planilha sincronizada para a pasta do projeto...
+                copy /Y "%EXCEL_SOURCE%" "RCA_Pocket.xlsx" >nul
+            )
+        )
+    )
+)
+
 if not exist "RCA_Pocket.xlsx" (
     echo ❌ Arquivo RCA_Pocket.xlsx não encontrado na pasta do projeto.
     exit /b 1

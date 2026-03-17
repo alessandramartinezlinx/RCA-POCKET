@@ -18,9 +18,9 @@ Pré-requisitos:
 """
 import json
 import sys
-import yaml
 from datetime import datetime, timezone
 from pathlib import Path
+from config_loader import load_config as load_project_config
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +31,7 @@ CACHE_FILE = Path("data/issues_cache.json")
 SYNC_FILE = Path("data/last_sync.txt")
 EXPORT_FILE = Path("data/jira_export_browser.json")  # backup do JSON bruto
 
-with open(CONFIG_FILE, encoding="utf-8") as f:
-    config = yaml.safe_load(f)
+config = load_project_config(CONFIG_FILE)
 
 BASE_URL = config["jira"]["base_url"].rstrip("/")
 FILTER_ID = config["jira"]["filter_id"]

@@ -299,11 +299,10 @@ def gerar_planilha_oficial(issues, acompanhamento):
     
     # Chama generate_excel que lerá do cache
     from generate_excel import generate_excel
-    import yaml
+    from config_loader import load_config as load_project_config
     
     # Carrega config
-    with open("rca_config.yaml", "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_project_config()
     
     # Gera o Excel (isso aplicará TODA a formatação correta)
     print(f"   🎨 Aplicando formatação completa...")
