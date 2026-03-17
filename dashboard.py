@@ -127,10 +127,12 @@ def load_issues(config: dict) -> pd.DataFrame:
             df = df[df["key"].astype(str).str.startswith(("MODAJOI", "MOD", "RCA"), na=False) |
                     df["key"].astype(str).str.strip().ne("")]
         except Exception as e:
-            print(f"[WARN] Falha ao ler Excel: {e} — usando cache JSON")
+            import streamlit as st
+            st.error(f"Erro ao ler Excel: {e}\nArquivo: {excel_path}")
             df = _load_from_cache(config)
     else:
-        # ── 2ª prioridade: cache JSON / mock ─────────────────────────────
+        import streamlit as st
+        st.error(f"Arquivo Excel não encontrado: {excel_path}")
         df = _load_from_cache(config)
 
     # ── Normalização de tipos ─────────────────────────────────────────────
