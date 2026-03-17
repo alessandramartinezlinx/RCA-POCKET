@@ -273,104 +273,11 @@ PLOTLY_CONFIG = {
 AUTO_REFRESH_INTERVAL_SECONDS = 60
 
 
-def get_theme_type() -> str:
-    """Detecta o tema ativo do Streamlit com fallback seguro."""
-    theme = getattr(st.context, "theme", None)
-    theme_type = None
-
-    if isinstance(theme, dict):
-        theme_type = theme.get("type")
-    elif theme is not None:
-        theme_type = getattr(theme, "type", None)
-
-    configured_base = st.get_option("theme.base")
-    if theme_type in {"light", "dark"}:
-        return theme_type
-    if configured_base in {"light", "dark"}:
-        return configured_base
-    return "light"
-
-
-def get_theme_tokens() -> dict:
-    """Paleta usada para harmonizar os gráficos Plotly com o tema do app."""
-    if get_theme_type() == "dark":
-        return {
-            "template": "plotly_dark",
-            "text": "#FAFAFA",
-            "muted_text": "#D7E0EA",
-            "grid": "rgba(250, 250, 250, 0.16)",
-            "axis": "rgba(250, 250, 250, 0.38)",
-            "hover_bg": "#182028",
-        }
-
-    return {
-        "template": "plotly_white",
-        "text": "#1F2937",
-        "muted_text": "#6B7280",
-        "grid": "rgba(15, 23, 42, 0.10)",
-        "axis": "rgba(15, 23, 42, 0.24)",
-        "hover_bg": "#F8FAFC",
-    }
-
-
-def apply_plotly_theme(fig: go.Figure) -> go.Figure:
-    """Aplica tema consistente aos gráficos sem alterar a lógica dos dados."""
-    tokens = get_theme_tokens()
-    fig.update_layout(
-        template=tokens["template"],
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=tokens["text"]),
-        title_font=dict(color=tokens["text"]),
-        hoverlabel=dict(bgcolor=tokens["hover_bg"], font_color=tokens["text"]),
-        legend=dict(
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(color=tokens["text"]),
-            title_font=dict(color=tokens["text"]),
-        ),
-    )
-    fig.update_xaxes(
-        gridcolor=tokens["grid"],
-        linecolor=tokens["axis"],
-        zerolinecolor=tokens["grid"],
-        tickfont=dict(color=tokens["text"]),
-        title_font=dict(color=tokens["text"]),
-    )
-    fig.update_yaxes(
-        gridcolor=tokens["grid"],
-        linecolor=tokens["axis"],
-        zerolinecolor=tokens["grid"],
-        tickfont=dict(color=tokens["text"]),
-        title_font=dict(color=tokens["text"]),
-    )
-
-    for annotation in fig.layout.annotations or ():
-        font = annotation.font.to_plotly_json() if annotation.font else {}
-        if font.get("color") in {None, "#888", "#999"}:
-            font["color"] = tokens["text"]
-        annotation.update(font=font)
-
-    for trace in fig.data:
-        if hasattr(trace, "textfont"):
-            trace.textfont = {**(trace.textfont.to_plotly_json() if trace.textfont else {}), "color": tokens["text"]}
-        if hasattr(trace, "insidetextfont"):
-            trace.insidetextfont = {
-                **(trace.insidetextfont.to_plotly_json() if trace.insidetextfont else {}),
-                "color": tokens["text"],
-            }
-        if hasattr(trace, "outsidetextfont"):
-            trace.outsidetextfont = {
-                **(trace.outsidetextfont.to_plotly_json() if trace.outsidetextfont else {}),
-                "color": tokens["text"],
-            }
-
-    return fig
-
-
 def render_chart(fig: go.Figure, key: str):
     st.plotly_chart(
-        apply_plotly_theme(fig),
+        fig,
         use_container_width=True,
+        theme="streamlit",
         key=key,
         config=PLOTLY_CONFIG,
     )
