@@ -45,10 +45,15 @@ st.markdown("""
     .stMetric { 
         background: var(--secondary-background-color); 
         border-radius: 8px; 
-        padding: 8px; 
+        padding: 8px;
         border-left: 4px solid var(--primary-color); 
+        border: 1px solid rgba(128, 128, 128, 0.20);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
     }
     .stMetric label { font-size: 12px !important; }
+    .stMetric label, .stMetric [data-testid="stMetricValue"], .stMetric [data-testid="stMetricDelta"] {
+        color: var(--text-color) !important;
+    }
 
     /* Headings — herdam a cor do tema, sem fixar valor */
     h1 { font-size: 1.6rem !important; }
@@ -64,6 +69,15 @@ st.markdown("""
     [data-testid="stHorizontalBlock"] { overflow-x: auto; flex-wrap: nowrap; }
     [data-testid="column"] { min-width: 200px; }
     .stPlotlyChart, .js-plotly-plot { min-width: 180px !important; }
+    [data-testid="stCaptionContainer"] {
+        color: var(--text-color) !important;
+        opacity: 0.82;
+    }
+    .stPlotlyChart {
+        border: 1px solid rgba(128, 128, 128, 0.16);
+        border-radius: 10px;
+        padding: 0.25rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -274,7 +288,7 @@ def get_theme_type() -> str:
         return theme_type
     if configured_base in {"light", "dark"}:
         return configured_base
-    return "dark"
+    return "light"
 
 
 def get_theme_tokens() -> dict:
@@ -283,9 +297,9 @@ def get_theme_tokens() -> dict:
         return {
             "template": "plotly_dark",
             "text": "#FAFAFA",
-            "muted_text": "#AAB4C3",
-            "grid": "rgba(250, 250, 250, 0.10)",
-            "axis": "rgba(250, 250, 250, 0.24)",
+            "muted_text": "#D7E0EA",
+            "grid": "rgba(250, 250, 250, 0.16)",
+            "axis": "rgba(250, 250, 250, 0.38)",
             "hover_bg": "#182028",
         }
 
@@ -333,8 +347,22 @@ def apply_plotly_theme(fig: go.Figure) -> go.Figure:
     for annotation in fig.layout.annotations or ():
         font = annotation.font.to_plotly_json() if annotation.font else {}
         if font.get("color") in {None, "#888", "#999"}:
-            font["color"] = tokens["muted_text"]
+            font["color"] = tokens["text"]
         annotation.update(font=font)
+
+    for trace in fig.data:
+        if hasattr(trace, "textfont"):
+            trace.textfont = {**(trace.textfont.to_plotly_json() if trace.textfont else {}), "color": tokens["text"]}
+        if hasattr(trace, "insidetextfont"):
+            trace.insidetextfont = {
+                **(trace.insidetextfont.to_plotly_json() if trace.insidetextfont else {}),
+                "color": tokens["text"],
+            }
+        if hasattr(trace, "outsidetextfont"):
+            trace.outsidetextfont = {
+                **(trace.outsidetextfont.to_plotly_json() if trace.outsidetextfont else {}),
+                "color": tokens["text"],
+            }
 
     return fig
 
