@@ -1,15 +1,17 @@
 """
 RCA Pocket - Gerador de Excel
 ==============================
-Gera (ou atualiza) o arquivo RCA_Pocket.xlsx com 3 abas:
-  📊 Dados                   — Issues do Jira + colunas de análise manual (tabela com filtros)
-  🗂️ Acompanhamento Issue    — Itens para resolução definitiva gerados da col. 'Item p/ Resolução Def.'
+Gera (ou atualiza) o arquivo RCA_Pocket.xlsx com 4 abas:
+  📊 Dados                   — Issues ativas do Jira + colunas de análise manual
+  🗂️ Acompanhamento Issue    — Itens para resolução definitiva
+  📦 Arquivo                  — Issues arquivadas (Analisado=Sim + mais de X dias)
   👥 Responsáveis             — Tabela de referência dos times
 
 Se o arquivo já existir:
   - Rows com 'Analisado = Sim' são preservadas integralmente (não sobrescritas pelo Jira)
   - Colunas manuais (K, M–Q) são preservadas nas demais rows
   - Aba Acompanhamento é preservada; novos itens de 'Item p/ Resolução Def.' são adicionados
+  - Issues com Analisado=Sim e importadas há mais de dias_retencao vão para aba 📦 Arquivo
 """
 
 import os
@@ -238,11 +240,6 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         data_criacao   = issue.get("data_criacao")
         data_resolucao = issue.get("data_resolucao")
 
-        # Se valor preservado de semana for texto antigo (Atual/Anterior), ignora
-        semana_preservada = _m("semana")
-        if semana_preservada and str(semana_preservada).strip().lower() in ("atual", "anterior"):
-            semana_preservada = None
-
         vals = [
             key,                                            # A  Key
             issue.get("resumo", ""),                       # B  Resumo
@@ -270,7 +267,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
             issue.get("dev_principal", ""),                # X  Dev Principal
             _m("issue_acompanhamento"),                    # Y  Issue de Acompanhamento ← manual
             _m("analisado"),                               # Z  Analisado ← manual
-            semana_preservada or issue.get("_semana", ""), # AA Data da filtragem
+            issue.get("_data_filtragem", ""),               # AA Data da filtragem
         ]
 
         # Escreve valores base
@@ -699,47 +696,242 @@ def _read_existing_manual_data(filepath: str) -> dict:
 
 
 # =============================================================================
+# DATA FILTRAGEM & ARQUIVAMENTO
+# =============================================================================
+
+def _injetar_data_filtragem(issues: list, preserved: dict):
+    """
+    Injeta em cada issue o campo '_data_filtragem' baseado no valor preservado
+    do Excel anterior (coluna "Data Filtragem" / "Semana").
+    
+    - Issues que já existiam na planilha: mantêm a data original (ex: 14/03/2026)
+    - Issues novas (sem dados preservados): recebem a data de hoje
+    
+    Isso garante que a ordenação por data reflita quando cada issue APARECEU
+    pela primeira vez na planilha, não quando o sync rodou.
+    """
+    hoje_str = datetime.now().strftime("%d/%m/%Y")
+    dados_manual = preserved.get("dados_manual_cols", {})
+    
+    for issue in issues:
+        key = issue.get("key", "")
+        manual = dados_manual.get(key, {})
+        
+        # Busca data preservada do Excel (campo "semana" na leitura)
+        data_preservada = manual.get("semana")
+        
+        # Ignora valores legados ("Atual", "Anterior")
+        if data_preservada and str(data_preservada).strip().lower() in ("atual", "anterior"):
+            data_preservada = None
+        
+        # Se tem data preservada válida, usa; senão é issue nova → hoje
+        if data_preservada and str(data_preservada).strip():
+            issue["_data_filtragem"] = str(data_preservada).strip()
+        else:
+            issue["_data_filtragem"] = hoje_str
+
+
+def _parse_data_filtragem(data_str) -> datetime:
+    """Converte string DD/MM/YYYY para datetime. Fallback: data mínima."""
+    if not data_str:
+        return datetime(2000, 1, 1)
+    if isinstance(data_str, datetime):
+        return data_str
+    try:
+        return datetime.strptime(str(data_str).strip(), "%d/%m/%Y")
+    except (ValueError, TypeError):
+        return datetime(2000, 1, 1)
+
+
+def _separar_arquivadas(issues: list, preserved: dict, dias_retencao: int) -> tuple:
+    """
+    Separa issues em (ativas, arquivadas).
+    
+    Critério para arquivar:
+      - Analisado = "Sim" (no Excel preservado)
+      - _data_filtragem > dias_retencao dias atrás
+    
+    Issues sem Analisado=Sim NUNCA são arquivadas.
+    """
+    hoje = datetime.now()
+    limite = hoje - timedelta(days=dias_retencao)
+    dados_analisados = preserved.get("dados_analisados", {})
+    
+    ativas = []
+    arquivadas = []
+    
+    for issue in issues:
+        key = issue.get("key", "")
+        
+        # Só arquiva se Analisado = Sim
+        if key not in dados_analisados:
+            ativas.append(issue)
+            continue
+        
+        # Verifica idade pela _data_filtragem (data real de quando apareceu na planilha)
+        data_filt = _parse_data_filtragem(issue.get("_data_filtragem"))
+        
+        if data_filt < limite:
+            arquivadas.append(issue)
+        else:
+            ativas.append(issue)
+    
+    return ativas, arquivadas
+
+
+# =============================================================================
+# ABA: ARQUIVO
+# =============================================================================
+
+ARQUIVO_COLS = [
+    ("A", "Key",                       14),
+    ("B", "Resumo",                    52),
+    ("C", "Status Jira",               15),
+    ("D", "Prioridade",                13),
+    ("E", "Data Criação",              14),
+    ("F", "Data Resolução",            14),
+    ("G", "Qtd Vínculos",              13),
+    ("H", "Causa Raiz",                40),
+    ("I", "Time",                      16),
+    ("J", "Tipo Erro (Auto)",          18),
+    ("K", "Análise da Causa",          40),
+    ("L", "Tipo de Ajuste",            22),
+    ("M", "Problema Resolvido?",       18),
+    ("N", "Data Filtragem",            14),
+    ("O", "Data Arquivamento",         16),
+]
+
+_BG_ARQUIVO = "7F6000"  # marrom escuro
+
+
+def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
+    """Constrói aba 📦 Arquivo com issues que já foram analisadas e são antigas."""
+    ws.title = "📦 Arquivo"
+    ws.freeze_panes = "A2"
+    ws.row_dimensions[1].height = 32
+
+    headers = [col[1] for col in ARQUIVO_COLS]
+    _header_style(ws, 1, headers, bg=_BG_ARQUIVO)
+    _set_col_widths(ws, {col[0]: col[2] for col in ARQUIVO_COLS})
+
+    fill_arq = PatternFill("solid", fgColor="FFF8E1")  # amarelo claro
+
+    dados_analisados = preserved.get("dados_analisados", {})
+    dados_manual     = preserved.get("dados_manual_cols", {})
+    hoje_str = datetime.now().strftime("%d/%m/%Y")
+
+    for row_idx, issue in enumerate(issues_arquivadas, start=2):
+        key = issue.get("key", "")
+        link = issue.get("link_jira", "")
+        ws.row_dimensions[row_idx].height = 20
+
+        # Dados preservados do Excel (linha congelada) ou do issue
+        row_data = dados_analisados.get(key, {})
+        manual   = dados_manual.get(key, {})
+
+        def _v(excel_col_name, issue_field=None, manual_field=None):
+            """Busca valor: primeiro no row preservado, depois manual, depois issue."""
+            if row_data and excel_col_name in row_data:
+                return row_data[excel_col_name]
+            if manual_field and manual.get(manual_field):
+                return manual[manual_field]
+            if issue_field:
+                return issue.get(issue_field, "")
+            return ""
+
+        vals = [
+            key,                                                  # A Key
+            _v("Resumo", "resumo"),                              # B Resumo
+            _v("Status Jira", "status"),                         # C Status
+            _v("Prioridade", "prioridade"),                      # D Prioridade
+            _to_excel_date(_v("Data Criação", "data_criacao")),  # E Data Criação
+            _to_excel_date(_v("Data Resolução", "data_resolucao")),  # F Data Resolução
+            _v("Qtd Vínculos", "qtd_vinculos"),                  # G Qtd Vínculos
+            _v("Causa Raiz", None, "causa_raiz"),                # H Causa Raiz
+            _v("Time", "time"),                                  # I Time
+            _v("Tipo Erro (Auto)", "tipo_erro_auto"),            # J Tipo Erro
+            _v("Análise da Causa", None, "analise_causa"),       # K Análise
+            _v("Tipo de Ajuste", None, "ajuste_realizado"),      # L Tipo Ajuste
+            _v("Problema Resolvido?", None, "problema_resolvido"),  # M Problema Resolvido
+            _v("Data Filtragem") or issue.get("_data_filtragem", ""),  # N Data Filtragem
+            hoje_str,                                             # O Data Arquivamento
+        ]
+
+        for ci, val in enumerate(vals, start=1):
+            cell = ws.cell(row=row_idx, column=ci, value=val)
+            cell.border    = _make_thin_border()
+            cell.font      = Font(size=9)
+            cell.alignment = Alignment(vertical="center", wrap_text=False)
+            cell.fill      = fill_arq
+
+        # A: Key como hyperlink
+        kc = ws.cell(row=row_idx, column=1)
+        if link:
+            kc.hyperlink = link
+        kc.font = Font(color="0563C1", underline="single", size=9, bold=True)
+
+        # E, F: formato de data
+        for dc in [5, 6]:
+            c = ws.cell(row=row_idx, column=dc)
+            if c.value:
+                c.number_format = "DD/MM/YYYY"
+
+    n_rows = len(issues_arquivadas)
+    last_row = max(1 + n_rows, 2)
+
+    if n_rows > 0:
+        _add_table(ws, "TabelaArquivo",
+                   f"A1:{get_column_letter(len(ARQUIVO_COLS))}{last_row}",
+                   "TableStyleMedium4")
+
+    # Nota informativa
+    info_row = last_row + 2
+    ws.cell(row=info_row, column=1).value = (
+        f"ℹ️ Issues com Analisado=Sim importadas há mais de "
+        f"{preserved.get('_dias_retencao', 30)} dias são movidas para esta aba automaticamente."
+    )
+    ws.cell(row=info_row, column=1).font = Font(italic=True, color="888888", size=8)
+    ws.merge_cells(f"A{info_row}:{get_column_letter(len(ARQUIVO_COLS))}{info_row}")
+
+
+# =============================================================================
 # FUNÇÃO PRINCIPAL
 # =============================================================================
 
 def _sort_issues_by_priority(issues: list) -> list:
     """
-    Ordena issues seguindo a regra de priorização CRÍTICA:
+    Ordena issues com dupla ordenação:
     
-    🔴 PRIORIDADE ABSOLUTA: Quantidade de Vínculos
-       Issues com MAIS vínculos sempre ficam no topo, independente da prioridade.
+    🔴 1º CRITÉRIO: Data Filtragem (mais recente primeiro)
+       Cada nova importação "empilha" sobre as anteriores no topo da planilha.
+       Usa _data_filtragem (preservada do Excel anterior) para manter consistência.
     
-    🟠 SEGUNDA PRIORIDADE: Criticidade (P0 > P1 > outras)
-       Dentro de issues com mesma quantidade de vínculos:
-       - Crítica (P0) vem primeiro
-       - Alta (P1) vem segundo
-       - Demais prioridades vêm por último
+    🟠 2º CRITÉRIO: Quantidade de Vínculos (mais vínculos primeiro)
+       Dentro do mesmo lote de importação, issues com mais vínculos sobem.
     
-    🟡 DESEMPATE: Data de importação (mais recente primeiro)
-       Dentro do mesmo grupo (vínculos + prioridade), ordena por data recente.
+    🟡 3º CRITÉRIO: Criticidade (P0 > P1 > outras)
+       Desempate dentro do mesmo lote e mesma qtd de vínculos.
     
-    Exemplo de ordenação resultante:
-      1. Issue com 10 vínculos + P1
-      2. Issue com 5 vínculos + P0
-      3. Issue com 5 vínculos + P1
-      4. Issue com 0 vínculos + P0
-      5. Issue com 0 vínculos + P1
+    Exemplo com 2 lotes:
+      Lote 16/03 (mais recente — topo):
+        1. Issue com 10 vínculos + P1
+        2. Issue com 5 vínculos + P0
+        3. Issue com 0 vínculos + P1
+      Lote 14/03 (anterior — abaixo):
+        4. Issue com 8 vínculos + P0
+        5. Issue com 2 vínculos + P1
     
     Retorna nova lista ordenada.
     """
     def _sort_key(issue):
         qtd_vinculos = issue.get("qtd_vinculos", 0)
         prioridade = issue.get("prioridade", "")
-        data_imp = issue.get("data_importacao") or datetime(2000, 1, 1)
-                # Converte data_importacao se for string ISO
-        if isinstance(data_imp, str):
-            try:
-                data_imp = datetime.fromisoformat(data_imp)
-            except (ValueError, TypeError):
-                data_imp = datetime(2000, 1, 1)
-        elif not isinstance(data_imp, datetime):
-            data_imp = datetime(2000, 1, 1)
-                # Peso da prioridade: Crítica=0 (maior prioridade), Alta=1, demais=2
+        
+        # Usa _data_filtragem (data preservada do Excel, não data_importacao do sync)
+        data_filt = _parse_data_filtragem(issue.get("_data_filtragem"))
+        dia_filtragem = data_filt.date()
+        
+        # Peso da prioridade: Crítica=0, Alta=1, demais=2
         if prioridade == "Crítica":
             peso_prio = 0
         elif prioridade == "Alta":
@@ -747,54 +939,12 @@ def _sort_issues_by_priority(issues: list) -> list:
         else:
             peso_prio = 2
         
-        # ORDEM CRÍTICA: vínculos DESC (negativo), depois prioridade ASC, depois data DESC
-        # Vínculos com valor negativo garante que 10 vínculos > 5 vínculos > 0 vínculos
-        # Peso de prioridade garante que P0 (0) > P1 (1) > outras (2)
-        # Data negativa garante que mais recente > mais antiga
-        return (-qtd_vinculos, peso_prio, -data_imp.timestamp())
+        # 1º Data Filtragem DESC (dia mais recente primeiro)
+        # 2º Vínculos DESC (mais vínculos primeiro)
+        # 3º Prioridade ASC (P0 > P1 > outras)
+        return (-dia_filtragem.toordinal(), -qtd_vinculos, peso_prio)
     
     return sorted(issues, key=_sort_key)
-
-
-def _apply_weekly_stacking(issues: list, preserved_data: dict) -> list:
-    """
-    Empilhamento semanal: issues mais recentes (importadas esta semana) vão para o topo.
-    Issues antigas vão descendo.
-    
-    Critério: compara data_importacao de cada issue com a semana atual.
-    """
-    hoje = datetime.now()
-    inicio_semana = hoje - timedelta(days=hoje.weekday())  # Segunda-feira desta semana
-    inicio_semana = inicio_semana.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    issues_semana_atual = []
-    issues_antigas = []
-    
-    for issue in issues:
-        data_imp = issue.get("data_importacao")
-        
-        # Converte data_importacao se for string ISO
-        if isinstance(data_imp, str):
-            try:
-                data_imp = datetime.fromisoformat(data_imp)
-                issue["data_importacao"] = data_imp  # Atualiza no dict
-            except (ValueError, TypeError):
-                data_imp = None
-        
-        if data_imp and data_imp >= inicio_semana:
-            issues_semana_atual.append(issue)
-        else:
-            issues_antigas.append(issue)
-    
-    # Adiciona data de sincronização em cada issue
-    data_sync = hoje.strftime("%d/%m/%Y")
-    for issue in issues_semana_atual:
-        issue["_semana"] = data_sync
-    for issue in issues_antigas:
-        issue["_semana"] = issue.get("_semana") or data_sync
-    
-    # Issues da semana atual no topo, antigas embaixo
-    return issues_semana_atual + issues_antigas
 
 
 # =============================================================================
@@ -803,9 +953,10 @@ def _apply_weekly_stacking(issues: list, preserved_data: dict) -> list:
 
 def generate_excel(config: dict, output_path: str = None):
     """
-    Gera o arquivo RCA_Pocket.xlsx com 3 abas:
-      📊 Dados               — issues do Jira + colunas manuais
+    Gera o arquivo RCA_Pocket.xlsx com 4 abas:
+      📊 Dados               — issues ativas do Jira + colunas manuais
       🗂️ Acompanhamento Issue — itens de resolução definitiva + plano de ação
+      📦 Arquivo              — issues arquivadas (Analisado=Sim + >dias_retencao dias)
       👥 Responsáveis         — mapeamento time → QA/Dev
 
     Preservação entre re-gerações:
@@ -836,13 +987,26 @@ def generate_excel(config: dict, output_path: str = None):
         print(f"   ↳ {n_frozen} linhas congeladas (Analisado=Sim) | "
               f"{n_acomp} itens de acompanhamento preservados")
     
-    # 2.5. Ordenação e empilhamento semanal
-    print(f"🔀 Ordenando issues (vínculos > P0 > P1) e aplicando empilhamento semanal...")
-    issues = _sort_issues_by_priority(issues)
-    issues = _apply_weekly_stacking(issues, preserved)
+    # 2.5. Injetar "Data Filtragem" preservada em cada issue (para ordenação e exibição)
+    _injetar_data_filtragem(issues, preserved)
+
+    # 2.6. Arquivamento: separar issues analisadas com mais de X dias
+    dias_retencao = config.get("excel", {}).get("dias_retencao", 30)
+    issues_ativas, issues_arquivadas = _separar_arquivadas(
+        issues, preserved, dias_retencao
+    )
+    preserved["_dias_retencao"] = dias_retencao
+    if issues_arquivadas:
+        print(f"📦 {len(issues_arquivadas)} issues arquivadas (Analisado=Sim + >{dias_retencao} dias)")
     
-    semana_atual = sum(1 for i in issues if i.get("_semana") == "Atual")
-    print(f"   ↳ {semana_atual} issues desta semana | {len(issues) - semana_atual} anteriores")
+    # 2.7. Ordenação (só nas ativas)
+    print(f"🔀 Ordenando issues (data filtragem > vínculos > prioridade)...")
+    issues_ativas = _sort_issues_by_priority(issues_ativas)
+    
+    # Contagem por data
+    hoje_str = datetime.now().strftime("%d/%m/%Y")
+    n_hoje = sum(1 for i in issues_ativas if i.get("_data_filtragem") == hoje_str)
+    print(f"   ↳ {n_hoje} issues novas (hoje) | {len(issues_ativas) - n_hoje} anteriores")
 
     # Tipos de erro disponíveis (para dropdown)
     tipos_erro = list(config.get("tipos_erro", {}).keys())
@@ -855,13 +1019,17 @@ def generate_excel(config: dict, output_path: str = None):
 
     ws_dados = wb.create_sheet("📊 Dados")
     ws_acomp = wb.create_sheet("🗂️ Acompanhamento Issue")
+    ws_arq   = wb.create_sheet("📦 Arquivo")
     ws_resp  = wb.create_sheet("👥 Responsáveis")
 
     print("📊 Construindo aba Dados...")
-    _build_dados(ws_dados, issues, tipos_erro, preserved)
+    _build_dados(ws_dados, issues_ativas, tipos_erro, preserved)
+
+    print("📦 Construindo aba Arquivo...")
+    _build_arquivo(ws_arq, issues_arquivadas, preserved)
 
     print("🗂️  Construindo aba Acompanhamento Issue...")
-    n_acomp_gerados = _build_acompanhamento(ws_acomp, issues, preserved["acompanhamento"], preserved["dados_manual_cols"])
+    n_acomp_gerados = _build_acompanhamento(ws_acomp, issues_ativas, preserved["acompanhamento"], preserved["dados_manual_cols"])
 
     print("👥 Construindo aba Responsáveis...")
     _build_responsaveis(ws_resp, config.get("times", {}))
@@ -874,9 +1042,18 @@ def generate_excel(config: dict, output_path: str = None):
     wb.save(str(output_path))
     print(f"\n✅ Excel gerado: {output_path.resolve()}")
     print(f"   Abas: {' | '.join(wb.sheetnames)}")
-    print(f"   Issues: {len(issues)} | Acompanhamento: {n_acomp_gerados} itens")
-    print(f"{'='*60}\n")
+    print(f"   Issues ativas: {len(issues_ativas)} | Arquivadas: {len(issues_arquivadas)} | Acompanhamento: {n_acomp_gerados} itens")
 
+    # Salvar também no OneDrive, se configurado
+    onedrive_path = config.get("excel", {}).get("onedrive_path", "")
+    if onedrive_path:
+        try:
+            wb.save(str(onedrive_path))
+            print(f"\n☁️  Cópia salva no OneDrive: {onedrive_path}")
+        except Exception as e:
+            print(f"[WARN] Falha ao salvar no OneDrive: {e}")
+
+    print(f"{'='*60}\n")
     return str(output_path.resolve())
 
 

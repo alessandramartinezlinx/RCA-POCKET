@@ -762,6 +762,23 @@ def map_issue_to_area(labels: list, times_config: dict) -> dict:
 
     labels_lower = [lbl.lower() for lbl in labels]
 
+    # 1. Prioriza Venda Fácil se presente
+    for time_name, time_data in times_config.items():
+        for area in time_data.get("areas", []):
+            if area["nome"].lower() == "venda fácil" or area["nome"].lower() == "venda facil":
+                area_labels = [lbl.lower() for lbl in area.get("labels_jira", [])]
+                if any(al in labels_lower for al in area_labels):
+                    result.update({
+                        "time": time_name,
+                        "area": area["nome"],
+                        "qa_principal": area.get("qa_principal", ""),
+                        "qa_secundario": area.get("qa_secundario", ""),
+                        "dev_principal": area.get("dev_principal", ""),
+                        "dev_secundario": area.get("dev_secundario", ""),
+                    })
+                    return result
+
+    # 2. Mapeamento padrão (ordem YAML)
     for time_name, time_data in times_config.items():
         for area in time_data.get("areas", []):
             area_labels = [lbl.lower() for lbl in area.get("labels_jira", [])]

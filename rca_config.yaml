@@ -66,7 +66,12 @@ cache:
   parallel_pagination: false
 
 excel:
-  arquivo_saida: "RCA_Pocket.xlsx"
+  arquivo_saida: "c:/Users/alessandra.martinez/OneDrive - Linx SA/RCA_Pocket.xlsx"
+  # Issues com Analisado=Sim e importadas há mais de X dias vão para a aba "📦 Arquivo"
+  dias_retencao: 30
+  # Caminho do arquivo na pasta do OneDrive para salvar automaticamente uma cópia
+  # Exemplo: C:/Users/SeuUsuario/OneDrive/RCA_Pocket.xlsx
+  onedrive_path: "c:/Users/alessandra.martinez/OneDrive - Linx SA/RCA_Pocket.xlsx"
   # URL do Excel Online no SharePoint (com ?web=1 para forçar abertura no browser)
   # Exemplo: https://suaempresa.sharepoint.com/sites/QA/RCA_Pocket.xlsx?web=1
   # Deixe vazio enquanto o arquivo ainda nao estiver no SharePoint
@@ -231,44 +236,44 @@ times:
         labels_jira:
           - Conciliadores
           - conciliadores
-        qa_principal: Fabio Elias
+        qa_principal: Michelle Pereira 
         qa_secundario: ""
-        dev_principal: Michelle Pereira
+        dev_principal: 
         dev_secundario: ""
       - nome: Gestão Financeira
         labels_jira:
           - Gestão Financeira
           - gestao-financeira
           - Gestao Financeira
-        qa_principal: Fabio Elias
+        qa_principal: Michelle Pereira 
         qa_secundario: ""
-        dev_principal: Michelle Pereira
+        dev_principal: Fabio Elias
         dev_secundario: ""
       - nome: NF-e
         labels_jira:
           - NF-e
           - NFe
           - nfe
-        qa_principal: Jean Carlos
+        qa_principal: Flavia Doge
         qa_secundario: ""
-        dev_principal: Flavia Doge
+        dev_principal: Jean Carlos
         dev_secundario: ""
       - nome: Rejeições
         labels_jira:
           - Rejeições
           - Rejeicoes
           - rejeicoes
-        qa_principal: Jean Carlos
+        qa_principal: Flavia Doge
         qa_secundario: ""
-        dev_principal: Flavia Doge
+        dev_principal: Jean Carlos
         dev_secundario: ""
       - nome: Conferencia de Caixa
         labels_jira:
           - Conferencia de Caixa
           - conferencia-caixa
-        qa_principal: Jean Carlos
+        qa_principal: Flavia Doge
         qa_secundario: ""
-        dev_principal: Flavia Doge
+        dev_principal: Jean Carlos
         dev_secundario: ""
 
   FatInt:

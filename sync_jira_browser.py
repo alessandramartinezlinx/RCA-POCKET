@@ -240,50 +240,75 @@ def main():
         print("   → Faça login manualmente no browser que abriu.")
         page.goto(login_url, wait_until="domcontentloaded")
 
-        # Aguarda até o usuário estar logado (detecta o dashboard ou link de perfil)
-        print("   ⏳ Aguardando login ...")
-        try:
-            page.wait_for_selector(
-                'a[id="header-details-user-fullname"], '   # Jira DC header
-                'a[data-username], '                        # link de perfil
-                'meta[name="ajs-remote-user"]',            # meta com user logado
-                timeout=300_000,  # 5 minutos para fazer login
-            )
-        except Exception:
-            # Fallback: tenta detectar navegando para a API
-            pass
+        # Aguarda login via polling da API (independe da versão/UI do Jira)
+        import time as _time
+        print("   ⏳ Aguardando login (verificando a cada 5s, timeout 5min) ...")
+        auth_check = None
+        max_attempts = 60  # 60 x 5s = 5 minutos
+        for attempt in range(1, max_attempts + 1):
+            # Garante que o browser está no domínio do Jira antes do fetch
+            current_url = page.url
+            if not current_url.startswith(BASE_URL):
+                try:
+                    page.goto(f"{BASE_URL}/secure/Dashboard.jspa", wait_until="domcontentloaded", timeout=10000)
+                except Exception:
+                    pass
 
-        # Verifica se está autenticado tentando acessar a API
-        print("   🔍 Verificando autenticação ...")
-        auth_check = page.evaluate(f"""
-            async () => {{
-                const resp = await fetch("{BASE_URL}/rest/api/2/myself", {{
-                    headers: {{ "Accept": "application/json" }}
-                }});
-                if (!resp.ok) return {{ ok: false, status: resp.status }};
-                const data = await resp.json();
-                return {{ ok: true, user: data.displayName || data.name }};
-            }}
-        """)
+            try:
+                auth_check = page.evaluate(f"""
+                    async () => {{
+                        try {{
+                            const resp = await fetch("{BASE_URL}/rest/api/2/myself", {{
+                                headers: {{ "Accept": "application/json" }}
+                            }});
+                            if (!resp.ok) return {{ ok: false, status: resp.status }};
+                            const data = await resp.json();
+                            return {{ ok: true, user: data.displayName || data.name }};
+                        }} catch(e) {{
+                            return {{ ok: false, status: 0, error: e.message }};
+                        }}
+                    }}
+                """)
+            except Exception as e:
+                auth_check = {"ok": False, "status": 0, "error": str(e)}
 
-        if not auth_check.get("ok"):
-            print("\n⚠️  Parece que o login ainda não foi concluído.")
+            if auth_check and auth_check.get("ok"):
+                break
+
+            if attempt % 6 == 0:  # a cada 30s mostra status
+                mins_left = (max_attempts - attempt) * 5 // 60
+                print(f"   ⏳ Ainda aguardando login... ({mins_left}min restantes)")
+            _time.sleep(5)
+
+        if not auth_check or not auth_check.get("ok"):
+            print("\n⚠️  Login não detectado automaticamente.")
             input("   Pressione ENTER quando estiver logado no Jira... ")
+            # Navega para o Jira e re-verifica
+            try:
+                page.goto(f"{BASE_URL}/secure/Dashboard.jspa", wait_until="domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+            try:
+                auth_check = page.evaluate(f"""
+                    async () => {{
+                        try {{
+                            const resp = await fetch("{BASE_URL}/rest/api/2/myself", {{
+                                headers: {{ "Accept": "application/json" }}
+                            }});
+                            if (!resp.ok) return {{ ok: false, status: resp.status }};
+                            const data = await resp.json();
+                            return {{ ok: true, user: data.displayName || data.name }};
+                        }} catch(e) {{
+                            return {{ ok: false, status: 0, error: e.message }};
+                        }}
+                    }}
+                """)
+            except Exception as e:
+                auth_check = {"ok": False, "status": 0, "error": str(e)}
 
-            # Re-verifica
-            auth_check = page.evaluate(f"""
-                async () => {{
-                    const resp = await fetch("{BASE_URL}/rest/api/2/myself", {{
-                        headers: {{ "Accept": "application/json" }}
-                    }});
-                    if (!resp.ok) return {{ ok: false, status: resp.status }};
-                    const data = await resp.json();
-                    return {{ ok: true, user: data.displayName || data.name }};
-                }}
-            """)
-
-            if not auth_check.get("ok"):
-                print(f"   ❌ Falha na autenticação (HTTP {auth_check.get('status')})")
+            if not auth_check or not auth_check.get("ok"):
+                err_detail = auth_check.get("error", "") or f"HTTP {auth_check.get('status', '?')}"
+                print(f"   ❌ Falha na autenticação: {err_detail}")
                 browser.close()
                 sys.exit(1)
 
