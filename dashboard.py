@@ -302,11 +302,16 @@ def build_data_signature(config: dict) -> str:
 
 
 def sync_data_signature(config: dict):
-    """Limpa o cache quando a fonte de dados muda entre reruns."""
+    """Limpa o cache quando a fonte de dados muda entre reruns.
+
+    Nota: Em refresh completo do browser, session_state é resetado mas
+    st.cache_data sobrevive no processo do servidor.  Por isso, limpamos
+    o cache também quando não há assinatura anterior (sessão nova).
+    """
     current_signature = build_data_signature(config)
     previous_signature = st.session_state.get("_data_signature")
 
-    if previous_signature and previous_signature != current_signature:
+    if previous_signature != current_signature:
         st.cache_data.clear()
 
     st.session_state["_data_signature"] = current_signature
