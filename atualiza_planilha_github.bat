@@ -17,7 +17,11 @@ if not exist "%PLANILHA_ONEDRIVE%" (
   exit /b 1
 )
 
-copy "%PLANILHA_ONEDRIVE%" %PLANILHA_PROJETO% /Y
+python -c "import shutil; shutil.copy2(r'%PLANILHA_ONEDRIVE%', %PLANILHA_PROJETO%)"
+if %errorlevel% neq 0 (
+  echo Fallback: tentando copy nativo...
+  copy "%PLANILHA_ONEDRIVE%" %PLANILHA_PROJETO% /Y
+)
 
 git add RCA_Pocket.xlsx
 git commit -m "Atualiza planilha RCA_Pocket.xlsx do OneDrive"

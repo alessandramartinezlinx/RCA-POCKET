@@ -144,7 +144,11 @@ if not "%EXCEL_SOURCE%"=="" (
         if /i not "%EXCEL_SOURCE%"=="%CD%\\RCA_Pocket.xlsx" (
             if exist "%EXCEL_SOURCE%" (
                 echo 🔄 Copiando planilha sincronizada para a pasta do projeto...
-                copy /Y "%EXCEL_SOURCE%" "RCA_Pocket.xlsx" >nul
+                python -c "import shutil; shutil.copy2(r'%EXCEL_SOURCE%', 'RCA_Pocket.xlsx')"
+                if !errorlevel! neq 0 (
+                    echo ⚠️  Fallback: tentando copy nativo...
+                    copy /Y "%EXCEL_SOURCE%" "RCA_Pocket.xlsx" >nul
+                )
             )
         )
     )
