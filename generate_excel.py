@@ -30,7 +30,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.formatting.rule import CellIsRule, FormulaRule
 
 from jira_client import JiraClient, MOCK_ACTIONS
-from indexar_testes import carregar_indice, buscar_tas_relacionados
+from indexar_testes import obter_indice, buscar_tas_relacionados
 from config_loader import load_config as load_project_config
 
 # =============================================================================
@@ -206,6 +206,7 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     fill_b2     = _solid_fill("E8EAED")  # cinza-azul pastel — L–O
     fill_b3     = _solid_fill("EBF1DE")  # verde pastel   — P–AB
     fill_frozen = _solid_fill("EFF6FF")  # azul claro — linhas congeladas
+    dados_date_headers = {"Data Criação", "Data Resolução", "Data Filtragem"}
 
     # ── Validações — string inline com unicode explícito (compatível Excel + LibreOffice) ──────
     _sim_nao = '"Sim,N\u00e3o"'   # "Sim,Não"
@@ -220,8 +221,8 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
     dados_analisados  = preserved.get("dados_analisados", {})
     dados_manual_cols = preserved.get("dados_manual_cols", {})
 
-    # Carrega índice de TAs para matching por similaridade
-    ta_indice = carregar_indice()
+    # Carrega índice de TAs para matching por similaridade (re-indexa se expirado)
+    ta_indice = obter_indice()
 
     for row_idx, issue in enumerate(issues, start=2):
         key  = issue.get("key", "")
@@ -232,12 +233,65 @@ def _build_dados(ws, issues: list, tipos_erro: list, preserved: dict):
         if key in dados_analisados:
             preserved_row = dados_analisados[key]
             for ci, col_def in enumerate(DADOS_COLS, start=1):
-                val  = preserved_row.get(col_def[1])
+                header = col_def[1]
+                val = preserved_row.get(header)
+                if header in dados_date_headers:
+                    val = _to_excel_date(val)
                 cell = ws.cell(row=row_idx, column=ci, value=val)
                 cell.border    = _make_thin_border()
                 cell.font      = Font(size=9)
                 cell.alignment = Alignment(vertical="center", wrap_text=False)
-                cell.fill      = fill_frozen
+                if ci <= 11:
+                    cell.fill = fill_b1
+                elif ci <= 15:
+                    cell.fill = fill_b2
+                else:
+                    cell.fill = fill_b3
+
+            # Mantém sinal visual de linha congelada sem perder a paleta por bloco.
+            ws.cell(row=row_idx, column=27).fill = fill_frozen
+
+            for dc in [5, 6, 28]:
+                c = ws.cell(row=row_idx, column=dc)
+                if c.value:
+                    c.number_format = "DD/MM/YYYY"
+
+            o_cell = ws.cell(row=row_idx, column=15)
+            o_cell.alignment = Alignment(vertical="top", wrap_text=True)
+            if preserved_row.get("Ação Realizada no Bug"):
+                ws.row_dimensions[row_idx].height = 40
+
+            prio_val = preserved_row.get("Prioridade", "")
+            prio_cell = ws.cell(row=row_idx, column=4)
+            colors_prio = {"Crítica": PRIO_CRITICA, "Alta": PRIO_ALTA,
+                           "Média": PRIO_MEDIA, "Baixa": PRIO_BAIXA}
+            prio_color = colors_prio.get(prio_val)
+            if prio_color:
+                is_dark = prio_val in ("Crítica", "Alta")
+                prio_cell.fill = _solid_fill(prio_color)
+                prio_cell.font = Font(bold=True, size=9,
+                                      color="FFFFFF" if is_dark else "333333")
+
+            status_val = preserved_row.get("Status Jira", "")
+            status_cell = ws.cell(row=row_idx, column=3)
+            colors_status = {"Resolvido": STATUS_RESOLVIDO,
+                             "Em Análise": STATUS_EM_ANALISE, "Aberto": STATUS_ABERTO}
+            st_color = colors_status.get(status_val)
+            if st_color:
+                status_cell.fill = _solid_fill(st_color)
+
+            vinc_cell = ws.cell(row=row_idx, column=10)
+            try:
+                qtd_vinc = int(preserved_row.get("Qtd Vínculos", 0) or 0)
+            except (TypeError, ValueError):
+                qtd_vinc = 0
+            if qtd_vinc >= 5:
+                vinc_cell.fill = _solid_fill("FFC7CE")
+                vinc_cell.font = Font(bold=True, size=9, color="9C0006")
+            elif qtd_vinc >= 3:
+                vinc_cell.fill = _solid_fill("FFEB9C")
+                vinc_cell.font = Font(bold=True, size=9, color="9C6500")
+
             kc = ws.cell(row=row_idx, column=1)
             if link:
                 kc.hyperlink = link
@@ -618,6 +672,7 @@ def _read_existing_manual_data(filepath: str) -> dict:
     result: dict = {
         "dados_analisados":  {},
         "dados_manual_cols": {},
+        "dados_full_rows":   {},
         "acompanhamento":    [],
     }
     try:
@@ -688,11 +743,15 @@ def _read_existing_manual_data(filepath: str) -> dict:
                 result["dados_manual_cols"][key] = manual_data
                 issues_list.append({"key": key})
 
-                # Linha inteira preservada se Analisado = "Sim"
+                # Linha inteira preservada para TODAS as issues (necessário
+                # para reconstruir issues que estão no Excel mas não no cache)
+                full_row: dict = {}
+                for col_name, ci_val in zip(header, row):
+                    full_row[col_name] = ci_val
+                result["dados_full_rows"][key] = full_row
+
+                # Linha congelada se Analisado = "Sim"
                 if analisado_val.lower() == "sim":
-                    full_row: dict = {}
-                    for col_name, ci_val in zip(header, row):
-                        full_row[col_name] = ci_val
                     result["dados_analisados"][key] = full_row
 
         # ── Aba Acompanhamento Issue ──────────────────────────────────────────
@@ -713,14 +772,75 @@ def _read_existing_manual_data(filepath: str) -> dict:
                     continue
                 result["acompanhamento"].append({
                     "issue_acomp":    issue_acomp_str,
-                    "responsavel":    row[3] or "" if len(row) > 3 else "",
-                    "area":           row[4] or "" if len(row) > 4 else "",
-                    "acao":           row[5] or "" if len(row) > 5 else "",
-                    "status_acao":    row[6] or "" if len(row) > 6 else "",
-                    "data_limite":    row[7] or None if len(row) > 7 else None,
-                    "data_conclusao": row[8] or None if len(row) > 8 else None,
-                    "observacao":     row[9] or "" if len(row) > 9 else "",
+                    "responsavel":    row[2] or "" if len(row) > 2 else "",
+                    "area":           row[3] or "" if len(row) > 3 else "",
+                    "acao":           row[4] or "" if len(row) > 4 else "",
+                    "status_acao":    row[5] or "" if len(row) > 5 else "",
+                    "data_limite":    row[6] or None if len(row) > 6 else None,
+                    "data_conclusao": row[7] or None if len(row) > 7 else None,
+                    "observacao":     row[8] or "" if len(row) > 8 else "",
                 })
+
+        # ── Aba Arquivo ──────────────────────────────────────────────────────
+        # Preserva dados manuais de issues arquivadas para que não se percam
+        # quando o Excel é regenerado. Sem isso, issues que foram para Arquivo
+        # perdem Analisado=Sim e dados manuais nas próximas gerações.
+        arq_sheet = "📦 Arquivo"
+        if arq_sheet in wb.sheetnames:
+            ws = wb[arq_sheet]
+            arq_rows = list(ws.iter_rows(values_only=True))
+            if arq_rows and len(arq_rows) > 1:
+                arq_header = [str(h).strip() if h is not None else "" for h in arq_rows[0]]
+                arq_key_idx = arq_header.index("Key") if "Key" in arq_header else 0
+                # Mapeia colunas do Arquivo para campos manuais
+                arq_col_map = {
+                    "causa_raiz":                "Causa Raiz",
+                    "analise_causa":             "Análise da Causa",
+                    "ajuste_realizado":          "Tipo de Ajuste",
+                    "possui_ta":                 "Possui TA",
+                    "arquivo_ta":                "Arquivo TA",
+                    "resultado_automacao":       "Resultado da Automação",
+                    "contexto":                  "Contexto",
+                    "problema_resolvido":        "Problema Resolvido?",
+                    "issue_acompanhamento":      "Issue de Acompanhamento",
+                    "plano_acao_licao_aprendida": "Plano Ação/Lição Aprendida",
+                }
+                arq_indices = {}
+                for field, col_name in arq_col_map.items():
+                    if col_name in arq_header:
+                        arq_indices[field] = arq_header.index(col_name)
+
+                for row in arq_rows[1:]:
+                    if not any(v for v in row):
+                        continue
+                    key = str(row[arq_key_idx] or "").strip()
+                    if not key or key.startswith("ℹ"):
+                        continue
+
+                    # Só adiciona se a issue ainda não está na aba Dados (evita sobrescrever)
+                    if key not in result["dados_manual_cols"]:
+                        manual_data = {"analisado": "Sim"}
+                        for field, ci in arq_indices.items():
+                            if ci < len(row):
+                                manual_data[field] = row[ci]
+                        result["dados_manual_cols"][key] = manual_data
+
+                    # Marca como Analisado=Sim (estava arquivada, logo já foi analisada)
+                    if key not in result["dados_analisados"]:
+                        full_row = {}
+                        for col_name, val in zip(arq_header, row):
+                            full_row[col_name] = val
+                        full_row["Analisado"] = "Sim"
+                        result["dados_analisados"][key] = full_row
+
+                    # Também adiciona a dados_full_rows para que a detecção de
+                    # issues órfãs (no Excel mas não no cache) funcione
+                    if key not in result["dados_full_rows"]:
+                        full_row_arq = {}
+                        for col_name, val in zip(arq_header, row):
+                            full_row_arq[col_name] = val
+                        full_row_arq["Analisado"] = "Sim"
+                        result["dados_full_rows"][key] = full_row_arq
 
         wb.close()
     except Exception as e:
@@ -766,15 +886,26 @@ def _injetar_data_filtragem(issues: list, preserved: dict):
 
 
 def _parse_data_filtragem(data_str) -> datetime:
-    """Converte string DD/MM/YYYY para datetime. Fallback: data mínima."""
+    """Converte string DD/MM/YYYY, YYYY-MM-DD, datetime ou outros formatos para datetime."""
     if not data_str:
         return datetime(2000, 1, 1)
     if isinstance(data_str, datetime):
         return data_str
+    if hasattr(data_str, "year"):
+        # date object
+        return datetime(data_str.year, data_str.month, data_str.day)
+    val = str(data_str).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(val, fmt)
+        except ValueError:
+            continue
+    # Tenta truncar para YYYY-MM-DD (primeiros 10 chars) caso tenha milissegundos etc.
     try:
-        return datetime.strptime(str(data_str).strip(), "%d/%m/%Y")
-    except (ValueError, TypeError):
-        return datetime(2000, 1, 1)
+        return datetime.strptime(val[:10], "%Y-%m-%d")
+    except (ValueError, IndexError):
+        pass
+    return datetime(2000, 1, 1)
 
 
 def _separar_arquivadas(issues: list, preserved: dict, dias_retencao: int) -> tuple:
@@ -818,21 +949,37 @@ def _separar_arquivadas(issues: list, preserved: dict, dias_retencao: int) -> tu
 # =============================================================================
 
 ARQUIVO_COLS = [
-    ("A", "Key",                       14),
-    ("B", "Resumo",                    52),
-    ("C", "Status Jira",               15),
-    ("D", "Prioridade",                13),
-    ("E", "Data Criação",              14),
-    ("F", "Data Resolução",            14),
-    ("G", "Qtd Vínculos",              13),
-    ("H", "Causa Raiz",                40),
-    ("I", "Time",                      16),
-    ("J", "Tipo Erro (Auto)",          18),
-    ("K", "Análise da Causa",          40),
-    ("L", "Tipo de Ajuste",            22),
-    ("M", "Problema Resolvido?",       18),
-    ("N", "Data Filtragem",            14),
-    ("O", "Data Arquivamento",         16),
+    # ── Identificação Jira ────────────────────────────────────────────────────
+    ("A",  "Key",                        14),
+    ("B",  "Resumo",                     52),
+    ("C",  "Status Jira",                15),
+    ("D",  "Prioridade",                 13),
+    ("E",  "Data Criação",               14),
+    ("F",  "Data Resolução",             14),
+    ("G",  "Dias p/ Resolver",           14),
+    ("H",  "DeV Responsável pelo Bug",   20),
+    ("I",  "QA Responsável pelo Bug",    20),
+    ("J",  "Qtd Vínculos",               13),
+    ("K",  "Causa Raiz",                 40),
+    # ── Categorização ─────────────────────────────────────────────────────────
+    ("L",  "Time",                       16),
+    ("M",  "Área",                       18),
+    ("N",  "Tipo Erro (Auto)",           18),
+    ("O",  "Ação Realizada no Bug",      50),
+    # ── Análise Manual ────────────────────────────────────────────────────────
+    ("P",  "Análise da Causa",           40),
+    ("Q",  "Tipo de Ajuste",             22),
+    ("R",  "Possui TA",                  14),
+    ("S",  "Arquivo TA",                 35),
+    ("T",  "Resultado da Automação",     20),
+    ("U",  "Contexto",                   40),
+    ("V",  "Problema Resolvido?",        18),
+    ("W",  "QA Principal",               18),
+    ("X",  "Dev Principal",              18),
+    ("Y",  "Issue de Acompanhamento",    18),
+    ("Z",  "Plano Ação/Lição Aprendida", 32),
+    # ── Controle ──────────────────────────────────────────────────────────────
+    ("AA", "Data Arquivamento",          16),
 ]
 
 _BG_ARQUIVO = "7F6000"  # marrom escuro
@@ -874,21 +1021,33 @@ def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
             return ""
 
         vals = [
-            key,                                                  # A Key
-            _v("Resumo", "resumo"),                              # B Resumo
-            _v("Status Jira", "status"),                         # C Status
-            _v("Prioridade", "prioridade"),                      # D Prioridade
-            _to_excel_date(_v("Data Criação", "data_criacao")),  # E Data Criação
-            _to_excel_date(_v("Data Resolução", "data_resolucao")),  # F Data Resolução
-            _v("Qtd Vínculos", "qtd_vinculos"),                  # G Qtd Vínculos
-            _v("Causa Raiz", None, "causa_raiz"),                # H Causa Raiz
-            _v("Time", "time"),                                  # I Time
-            _v("Tipo Erro (Auto)", "tipo_erro_auto"),            # J Tipo Erro
-            _v("Análise da Causa", None, "analise_causa"),       # K Análise
-            _v("Tipo de Ajuste", None, "ajuste_realizado"),      # L Tipo Ajuste
-            _v("Problema Resolvido?", None, "problema_resolvido"),  # M Problema Resolvido
-            _to_excel_date(_v("Data Filtragem") or issue.get("_data_filtragem", "")),  # N Data Filtragem
-            _to_excel_date(hoje_str),                             # O Data Arquivamento
+            key,                                                              # A  Key
+            _v("Resumo", "resumo"),                                          # B  Resumo
+            _v("Status Jira", "status"),                                     # C  Status Jira
+            _v("Prioridade", "prioridade"),                                  # D  Prioridade
+            _to_excel_date(_v("Data Criação", "data_criacao")),              # E  Data Criação
+            _to_excel_date(_v("Data Resolução", "data_resolucao")),          # F  Data Resolução
+            _v("Dias p/ Resolver"),                                          # G  Dias p/ Resolver
+            _v("DeV Responsável pelo Bug", "dev_responsavel_bug"),           # H  DeV Responsável
+            _v("QA Responsável pelo Bug", "qa_responsavel_bug"),             # I  QA Responsável
+            _v("Qtd Vínculos", "qtd_vinculos"),                              # J  Qtd Vínculos
+            _v("Causa Raiz", None, "causa_raiz"),                            # K  Causa Raiz
+            _v("Time", "time"),                                              # L  Time
+            _v("Área", "area"),                                              # M  Área
+            _v("Tipo Erro (Auto)", "tipo_erro_auto"),                        # N  Tipo Erro (Auto)
+            _v("Ação Realizada no Bug", "acao_realizada"),                   # O  Ação Realizada
+            _v("Análise da Causa", None, "analise_causa"),                   # P  Análise da Causa
+            _v("Tipo de Ajuste", None, "ajuste_realizado"),                  # Q  Tipo de Ajuste
+            _v("Possui TA", None, "possui_ta"),                              # R  Possui TA
+            _v("Arquivo TA", None, "arquivo_ta"),                            # S  Arquivo TA
+            _v("Resultado da Automação", None, "resultado_automacao"),       # T  Resultado Automação
+            _v("Contexto", None, "contexto"),                                # U  Contexto
+            _v("Problema Resolvido?", None, "problema_resolvido"),           # V  Problema Resolvido?
+            _v("QA Principal", "qa_principal"),                               # W  QA Principal
+            _v("Dev Principal", "dev_principal"),                             # X  Dev Principal
+            _v("Issue de Acompanhamento", None, "issue_acompanhamento"),     # Y  Issue Acompanhamento
+            _v("Plano Ação/Lição Aprendida", None, "plano_acao_licao_aprendida"),  # Z Plano Ação
+            _to_excel_date(hoje_str),                                         # AA Data Arquivamento
         ]
 
         for ci, val in enumerate(vals, start=1):
@@ -904,8 +1063,12 @@ def _build_arquivo(ws, issues_arquivadas: list, preserved: dict):
             kc.hyperlink = link
         kc.font = Font(color="0563C1", underline="single", size=9, bold=True)
 
-        # E, F, N, O: formato de data
-        for dc in [5, 6, 14, 15]:
+        # O (15): Ação Realizada — wrap text
+        o_cell = ws.cell(row=row_idx, column=15)
+        o_cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+        # Datas: E(5), F(6), AA(27)
+        for dc in [5, 6, 27]:
             c = ws.cell(row=row_idx, column=dc)
             if c.value:
                 c.number_format = "DD/MM/YYYY"
@@ -1012,7 +1175,7 @@ def generate_excel(config: dict, output_path: str = None):
     print(f"✅ {len(issues)} issues carregadas")
 
     # 2. Preservar dados manuais se arquivo já existe
-    preserved: dict = {"dados_analisados": {}, "dados_manual_cols": {}, "acompanhamento": []}
+    preserved: dict = {"dados_analisados": {}, "dados_manual_cols": {}, "dados_full_rows": {}, "acompanhamento": []}
     if output_path.exists():
         print(f"🔄 Arquivo existente detectado — preservando dados manuais...")
         preserved = _read_existing_manual_data(str(output_path))
@@ -1020,7 +1183,39 @@ def generate_excel(config: dict, output_path: str = None):
         n_acomp  = len(preserved["acompanhamento"])
         print(f"   ↳ {n_frozen} linhas congeladas (Analisado=Sim) | "
               f"{n_acomp} itens de acompanhamento preservados")
-    
+
+    # 2.1. Recuperar issues que estão no Excel mas não no cache (órfãs)
+    #      Sem isso, issues de extrações anteriores seriam descartadas silenciosamente.
+    issue_keys = {i["key"] for i in issues}
+    orphan_keys = set(preserved.get("dados_full_rows", {}).keys()) - issue_keys
+    if orphan_keys:
+        print(f"   🔁 {len(orphan_keys)} issues do Excel anterior ausentes no cache — recuperando...")
+        _excel_to_issue_map = {
+            "Key": "key", "Resumo": "resumo", "Status Jira": "status",
+            "Prioridade": "prioridade", "Data Criação": "data_criacao",
+            "Data Resolução": "data_resolucao", "Qtd Vínculos": "qtd_vinculos",
+            "Time": "time", "Área": "area", "Tipo Erro (Auto)": "tipo_erro_auto",
+            "Ação Realizada no Bug": "acao_realizada",
+            "DeV Responsável pelo Bug": "dev_responsavel_bug",
+            "QA Responsável pelo Bug": "qa_responsavel_bug",
+            "QA Principal": "qa_principal", "Dev Principal": "dev_principal",
+            "Causa Raiz": "causa_raiz",
+        }
+        for okey in orphan_keys:
+            full_row = preserved["dados_full_rows"][okey]
+            rebuilt = {"key": okey, "link_jira": ""}
+            for excel_col, issue_field in _excel_to_issue_map.items():
+                val = full_row.get(excel_col)
+                if val is not None:
+                    rebuilt[issue_field] = val
+            # Garante campos numéricos
+            try:
+                rebuilt["qtd_vinculos"] = int(rebuilt.get("qtd_vinculos", 0) or 0)
+            except (TypeError, ValueError):
+                rebuilt["qtd_vinculos"] = 0
+            issues.append(rebuilt)
+        print(f"   ✅ Total de issues agora: {len(issues)}")
+
     # 2.5. Injetar "Data Filtragem" preservada em cada issue (para ordenação e exibição)
     _injetar_data_filtragem(issues, preserved)
 

@@ -169,25 +169,47 @@ def fetch_all_issues(page) -> list:
 
 
 def normalize_and_save(issues_raw: list):
-    """Normaliza issues e salva no cache."""
+    """Normaliza issues novas e faz merge com cache existente (delta update).
+
+    Issues já presentes no cache são atualizadas; issues que não vieram na
+    busca atual são mantidas, garantindo que dados anteriores não sejam perdidos.
+    """
     from jira_client import normalize_issue
 
     print(f"\n📋 Normalizando {len(issues_raw)} issues ...")
-    normalized = []
+    new_normalized = []
     for issue in issues_raw:
         try:
             n = normalize_issue(issue, config)
-            normalized.append(n)
+            new_normalized.append(n)
             vinc = n.get("qtd_vinculos", 0)
             print(f"  ✓ {n['key']:20s} | vinc={vinc:3d} | {n['prioridade']:12s} | {n['resumo'][:55]}")
         except Exception as e:
             print(f"  ✗ ERRO {issue.get('key', '?')}: {e}")
 
+    # Merge com cache existente (preserva issues anteriores)
+    existing = []
+    if CACHE_FILE.exists():
+        try:
+            with open(CACHE_FILE, encoding="utf-8") as f:
+                cached = json.load(f)
+            existing = cached.get("issues", []) if isinstance(cached, dict) else cached
+            print(f"   🔄 Cache anterior: {len(existing)} issues")
+        except Exception as e:
+            print(f"   ⚠️ Falha ao ler cache anterior: {e}")
+
+    new_keys = {i["key"] for i in new_normalized}
+    # Mantém issues antigas que não vieram na busca atual + adiciona/atualiza novas
+    merged = [i for i in existing if i.get("key") not in new_keys] + new_normalized
+    n_kept = len(merged) - len(new_normalized)
+    if n_kept > 0:
+        print(f"   🔄 {n_kept} issues anteriores preservadas | {len(new_normalized)} atualizadas/novas")
+
     # Salva cache
     cache_data = {
         "synced_at": datetime.now(timezone.utc).isoformat(),
-        "total": len(normalized),
-        "issues": normalized,
+        "total": len(merged),
+        "issues": merged,
         "meta": {"force_use_cache": True},
     }
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -196,8 +218,8 @@ def normalize_and_save(issues_raw: list):
 
     SYNC_FILE.write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-    print(f"\n✅ {len(normalized)} issues salvas em {CACHE_FILE}")
-    return normalized
+    print(f"\n✅ {len(merged)} issues no cache ({len(new_normalized)} novas/atualizadas + {n_kept} anteriores)")
+    return merged
 
 
 def generate_excel_report():
