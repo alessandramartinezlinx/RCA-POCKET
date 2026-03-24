@@ -48,7 +48,7 @@ echo   [0] Sair
 echo.
 echo Nota: A opção 1 abre o browser para login manual no Jira.
 echo       A opção 2 também indexa TAs automaticamente (requer GITHUB_TOKEN).
-echo       Se editou campos no Excel, basta reabrir o Dashboard (opção 3).
+echo       Se editou campos no Excel, publique no GitHub (opção 5) antes de abrir o Dashboard.
 echo.
 set /p OPCAO=Opção: 
 
