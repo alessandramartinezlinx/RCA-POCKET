@@ -474,7 +474,7 @@ MOCK_ACTIONS = [
 # =============================================================================
 _MOCK_MANUAL = {
     # Campos: possui_ta, ajuste_realizado, problema_resolvido, analise_causa,
-    #         acomp_area (FFC/FatInt/SupCrmImp/RC),
+    #         acomp_area (FFC/FatInt/SupCrmImp/Sustentação),
     #         acomp_responsavel, acomp_acao, acomp_status_acao, acomp_data_conclusao
     "MODAJOI-98001": {
         "possui_ta": "Sim", "ajuste_realizado": "Correção de banco de dados",
@@ -592,7 +592,7 @@ _MOCK_MANUAL = {
         "possui_ta": "Não", "ajuste_realizado": "Configuração / Parâmetro",
         "problema_resolvido": "Sim", "analise_causa": "Perfil Comprador não recebeu grant correto na atualização de roles",
         "item_resolucao_def": "Corrigir mapeamento de permissões para perfil Comprador no Compras 2.0",
-        "acomp_area": "RC", "acomp_responsavel": "Mauricio Maia",
+        "acomp_area": "Sustentação", "acomp_responsavel": "Mauricio Maia",
         "acomp_acao": "Corrigir script de configuração de roles e validar em todos os ambientes",
         "acomp_status_acao": "Concluído", "acomp_data_conclusao": "2025-12-05",
     },
@@ -608,7 +608,7 @@ _MOCK_MANUAL = {
         "possui_ta": "Não", "ajuste_realizado": "Preventiva / Processo",
         "problema_resolvido": "Não", "analise_causa": "Autenticação silenciosa não renova token JWT em sessões longas",
         "item_resolucao_def": "Implementar refresh token automático antes da expiração",
-        "acomp_area": "RC", "acomp_responsavel": "Mauricio Maia",
+        "acomp_area": "Sustentação", "acomp_responsavel": "Mauricio Maia",
         "acomp_acao": "Implementar interceptor para renovar token 5 min antes de expirar",
         "acomp_status_acao": "Análise", "acomp_data_conclusao": None,
     },
@@ -656,7 +656,7 @@ _MOCK_MANUAL = {
         "possui_ta": "Não", "ajuste_realizado": "Configuração / Parâmetro",
         "problema_resolvido": "Sim", "analise_causa": "Script de deploy não incluía grant de SELECT no schema de staging",
         "item_resolucao_def": "Corrigir scripts de deploy para incluir grants de permissão",
-        "acomp_area": "RC", "acomp_responsavel": "Willian Dias Brito",
+        "acomp_area": "Sustentação", "acomp_responsavel": "Willian Dias Brito",
         "acomp_acao": "Atualizar pipeline de deploy com script de grant automático",
         "acomp_status_acao": "Concluído", "acomp_data_conclusao": "2026-02-05",
     },
@@ -680,7 +680,7 @@ _MOCK_MANUAL = {
         "possui_ta": "Sim", "ajuste_realizado": "Configuração / Parâmetro",
         "problema_resolvido": "Não", "analise_causa": "Truststore do client não atualizado após renovação de certificado SSL",
         "item_resolucao_def": "Atualizar truststore e automatizar renovação SSL no client",
-        "acomp_area": "RC", "acomp_responsavel": "Rafael Flecha",
+        "acomp_area": "Sustentação", "acomp_responsavel": "Rafael Flecha",
         "acomp_acao": "Criar script de atualização de truststore e incluir no processo de renovação",
         "acomp_status_acao": "Análise", "acomp_data_conclusao": None,
     },
