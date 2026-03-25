@@ -804,21 +804,26 @@ def map_issue_to_area(labels: list, times_config: dict) -> dict:
 
 KEYWORDS_TIME_AREA = {
     "Suprimentos": {
-        "Entrada XML": ["xml", "nfe", "nf-e", "nota fiscal", "entrada", "sefaz", "danfe"],
+        "Entrada XML": ["xml", "nfe", "nf-e", "nota fiscal entrada", "entrada xml", "entrada cte", "sefaz", "danfe"],
         "Balanço": ["balanço", "balanco", "inventário", "inventario", "contagem", "estoque físico"],
         "Compras 2.0": ["compras", "compra", "pedido de compra", "sugestão de compra", "sugestao compras"],
-        "Estoque": ["estoque", "movimentação", "movimentacao", "saldo", "deposito", "depósito"]
+        "Estoque": ["estoque", "movimentação", "movimentacao", "saldo", "deposito", "depósito", "wms"]
     },
     "FFC": {
-        "Conciliadores": ["conciliador", "conciliação", "conciliacao", "pagamento", "recebimento"],
+        "Conciliadores": ["conciliador", "conciliação bancária", "conciliacao bancaria", "desconciliar", "conciliação", "conciliacao"],
         "Gestão Financeira": ["gestão financeira", "gestao financeira", "financeiro", "contas a pagar", "contas a receber"],
-        "NF-e": ["emissão", "emissao", "faturamento", "nf-e", "nota fiscal saída"],
+        "NF-e": ["nota substitutiva", "nota fiscal saída", "nf-e saída", "emissão de nota", "emissao de nota"],
         "Rejeições": ["rejeição", "rejeicao", "rejeições", "rejeicoes", "sefaz rejeitou", "erro sefaz"]
     },
     "FatInt": {
-        "Venda Fácil": ["venda fácil", "venda facil", "pdv", "pos", "caixa", "frente de loja", "checkout"],
+        "Venda Fácil": ["venda fácil", "venda facil", "pdv", "caixa", "frente de loja", "checkout",
+                        "pré-venda", "pre-venda", "orçamento", "orcamento", "link de pagamento",
+                        "cupom", "crm&bônus", "crm bonus", "scarf", "tef"],
+        "POS": ["pos"],
+        "Trocas": ["troca fácil", "troca facil", "trocas", "devolução", "devoluçao", "devolucao"],
         "B2C": ["b2c", "e-commerce", "ecommerce", "loja virtual", "marketplace", "carrinho"],
         "B2B": ["b2b", "atacado", "distribuidora"],
+        "Gerador de Relatórios": ["exportação de dados", "exportacao de dados", "gerador de relatório", "gerador de relatorio"],
         "Integração": ["integração", "integracao", "webhook", "api", "rest", "sincronização"]
     }
 }
