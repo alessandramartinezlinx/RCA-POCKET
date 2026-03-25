@@ -1240,7 +1240,8 @@ def filter_acompanhamento(df_acomp: pd.DataFrame, dff: pd.DataFrame) -> pd.DataF
         return df_acomp
 
     filtered_keys = set(dff["key"].astype(str).tolist())
-    return df_acomp[df_acomp["issue_original"].astype(str).str.strip().isin(filtered_keys)]
+    # Manter itens sem vínculo (issue_original vazio) + itens com vínculo filtrado
+    return df_acomp[~linked_mask | issue_original.isin(filtered_keys)]
 
 
 
