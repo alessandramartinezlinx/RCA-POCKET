@@ -494,7 +494,7 @@ def _build_acompanhamento(ws, issues: list, preserved_acomp: list, preserved_man
 
     dv_area = DataValidation(
         type="list",
-        formula1='"FFC,FatInt,SupCrmImp,Sustenta\u00e7\u00e3o"',
+        formula1='"FFC,FatInt,SupCrmImp,Sustenta\u00e7\u00e3o,Arquitetura"',
         allow_blank=True,
     )
     ws.add_data_validation(dv_area)
