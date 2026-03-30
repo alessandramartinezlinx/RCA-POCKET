@@ -362,9 +362,9 @@ def build_sidebar(df: pd.DataFrame):
 
         col1, col2 = st.columns(2)
         with col1:
-            data_ini = st.date_input("De", value=min_date.date() if hasattr(min_date, "date") else min_date, key="dt_ini")
+            data_ini = st.date_input("De", value=min_date.date() if hasattr(min_date, "date") else min_date, key="dt_ini", format="DD/MM/YYYY")
         with col2:
-            data_fim = st.date_input("Até", value=max_date.date() if hasattr(max_date, "date") else max_date, key="dt_fim")
+            data_fim = st.date_input("Até", value=max_date.date() if hasattr(max_date, "date") else max_date, key="dt_fim", format="DD/MM/YYYY")
 
         st.markdown("---")
         st.caption("Vazio = exibe todos. Selecione para filtrar.")
