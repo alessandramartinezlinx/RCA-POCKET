@@ -364,15 +364,6 @@ def build_sidebar(df: pd.DataFrame):
         )
         coluna_data = _DATE_OPTIONS[sel_tipo_data]
 
-        # Reseta intervalo de datas ao trocar de coluna e força rerun
-        _prev_col_key = "_prev_coluna_data"
-        if st.session_state.get(_prev_col_key) != coluna_data:
-            for k in ["dt_ini", "dt_fim"]:
-                if k in st.session_state:
-                    del st.session_state[k]
-            st.session_state[_prev_col_key] = coluna_data
-            st.rerun()
-
         # min/max dinâmicos conforme a coluna escolhida
         if coluna_data in df.columns:
             _series = df[coluna_data].dropna()
@@ -386,11 +377,16 @@ def build_sidebar(df: pd.DataFrame):
         if pd.isna(max_date):
             max_date = datetime.now()
 
+        # Chaves incluem coluna_data: ao trocar de coluna, novos widgets são
+        # criados do zero e inicializados com min/max da coluna selecionada.
+        _key_ini = f"dt_ini_{coluna_data}"
+        _key_fim = f"dt_fim_{coluna_data}"
+
         col1, col2 = st.columns(2)
         with col1:
-            data_ini = st.date_input("De", value=min_date.date() if hasattr(min_date, "date") else min_date, key="dt_ini", format="DD/MM/YYYY")
+            data_ini = st.date_input("De", value=min_date.date() if hasattr(min_date, "date") else min_date, key=_key_ini, format="DD/MM/YYYY")
         with col2:
-            data_fim = st.date_input("Até", value=max_date.date() if hasattr(max_date, "date") else max_date, key="dt_fim", format="DD/MM/YYYY")
+            data_fim = st.date_input("Até", value=max_date.date() if hasattr(max_date, "date") else max_date, key=_key_fim, format="DD/MM/YYYY")
 
         st.markdown("---")
         st.caption("Vazio = exibe todos. Selecione para filtrar.")
@@ -444,9 +440,14 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                for key in ["dt_ini", "dt_fim", "tipo_data"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # Remove chaves dinâmicas de todas as colunas possíveis
+                for _col in ["data_resolucao", "data_criacao", "data_filtragem"]:
+                    for _prefix in ["dt_ini", "dt_fim"]:
+                        _k = f"{_prefix}_{_col}"
+                        if _k in st.session_state:
+                            del st.session_state[_k]
+                if "tipo_data" in st.session_state:
+                    del st.session_state["tipo_data"]
                 st.rerun()
 
         cfg = load_config()
