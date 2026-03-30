@@ -115,6 +115,7 @@ _EXCEL_COL_MAP = {
     "DeV Responsável pelo Bug":  "dev_responsavel_bug",
     "QA Responsável pelo Bug":   "qa_responsavel_bug",
     "Causa Raiz":                "causa_raiz",
+    "Data Filtragem":            "data_filtragem",
 }
 
 
@@ -146,7 +147,7 @@ def load_issues(config: dict) -> pd.DataFrame:
         df = _load_from_cache(config)
 
     # ── Normalização de tipos ─────────────────────────────────────────────
-    for col in ["data_criacao", "data_resolucao"]:
+    for col in ["data_criacao", "data_resolucao", "data_filtragem"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
 
@@ -349,15 +350,39 @@ def build_sidebar(df: pd.DataFrame):
         st.markdown("---")
         st.markdown("### 🔍 Filtros")
 
-        if "data_criacao" in df.columns:
-            min_date = df["data_criacao"].min()
-            max_date = df["data_criacao"].max()
-            if pd.isna(min_date):
-                min_date = datetime.now() - timedelta(days=180)
-            if pd.isna(max_date):
-                max_date = datetime.now()
+        # ── Seletor dinâmico de coluna de data ─────────────────────────────
+        _DATE_OPTIONS = {
+            "✅ Data de Conclusão":   "data_resolucao",
+            "📅 Data de Criação":    "data_criacao",
+            "📥 Data de Importação": "data_filtragem",
+        }
+        sel_tipo_data = st.radio(
+            "Filtrar por data de:",
+            options=list(_DATE_OPTIONS.keys()),
+            index=0,
+            key="tipo_data",
+        )
+        coluna_data = _DATE_OPTIONS[sel_tipo_data]
+
+        # Reseta intervalo de datas ao trocar de coluna
+        _prev_col_key = "_prev_coluna_data"
+        if st.session_state.get(_prev_col_key) != coluna_data:
+            for k in ["dt_ini", "dt_fim"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.session_state[_prev_col_key] = coluna_data
+
+        # min/max dinâmicos conforme a coluna escolhida
+        if coluna_data in df.columns:
+            _series = df[coluna_data].dropna()
+            min_date = _series.min() if len(_series) else datetime.now() - timedelta(days=180)
+            max_date = _series.max() if len(_series) else datetime.now()
         else:
             min_date = datetime.now() - timedelta(days=180)
+            max_date = datetime.now()
+        if pd.isna(min_date):
+            min_date = datetime.now() - timedelta(days=180)
+        if pd.isna(max_date):
             max_date = datetime.now()
 
         col1, col2 = st.columns(2)
@@ -418,7 +443,7 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                for key in ["dt_ini", "dt_fim"]:
+                for key in ["dt_ini", "dt_fim", "tipo_data"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
@@ -438,6 +463,7 @@ def build_sidebar(df: pd.DataFrame):
     return {
         "data_ini": data_ini,
         "data_fim": data_fim,
+        "coluna_data": coluna_data,
         "times": sel_times,
         "areas": sel_areas,
         "tipos": sel_tipos,
@@ -457,10 +483,13 @@ def build_sidebar(df: pd.DataFrame):
 def apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     dff = df.copy()
 
-    if "data_criacao" in dff.columns:
+    coluna_data = filters.get("coluna_data", "data_resolucao")
+    if coluna_data in dff.columns:
+        mask_validos = dff[coluna_data].notna()
         dff = dff[
-            (dff["data_criacao"].dt.date >= filters["data_ini"]) &
-            (dff["data_criacao"].dt.date <= filters["data_fim"])
+            mask_validos &
+            (dff[coluna_data].dt.date >= filters["data_ini"]) &
+            (dff[coluna_data].dt.date <= filters["data_fim"])
         ]
 
     if filters["times"] and "time" in dff.columns:
