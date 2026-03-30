@@ -364,13 +364,14 @@ def build_sidebar(df: pd.DataFrame):
         )
         coluna_data = _DATE_OPTIONS[sel_tipo_data]
 
-        # Reseta intervalo de datas ao trocar de coluna
+        # Reseta intervalo de datas ao trocar de coluna e força rerun
         _prev_col_key = "_prev_coluna_data"
         if st.session_state.get(_prev_col_key) != coluna_data:
             for k in ["dt_ini", "dt_fim"]:
                 if k in st.session_state:
                     del st.session_state[k]
             st.session_state[_prev_col_key] = coluna_data
+            st.rerun()
 
         # min/max dinâmicos conforme a coluna escolhida
         if coluna_data in df.columns:
