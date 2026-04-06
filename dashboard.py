@@ -392,37 +392,78 @@ def build_sidebar(df: pd.DataFrame):
         st.caption("Vazio = exibe todos. Selecione para filtrar.")
 
         times = sorted(df["time"].dropna().unique().tolist()) if "time" in df.columns else []
-        sel_times = st.multiselect("👥 Time", options=times, default=[],
-                                   placeholder="Todos os times")
+        sel_times = st.multiselect(
+            "👥 Time",
+            options=times,
+            default=[],
+            placeholder="Todos os times",
+            key="times",
+        )
 
         df_filtered_time = df[df["time"].isin(sel_times)] if sel_times else df
         areas = sorted(df_filtered_time["area"].dropna().unique().tolist()) if "area" in df.columns else []
-        sel_areas = st.multiselect("📁 Área", options=areas, default=[],
-                                   placeholder="Todas as áreas")
+        sel_areas = st.multiselect(
+            "📁 Área",
+            options=areas,
+            default=[],
+            placeholder="Todas as áreas",
+            key="areas",
+        )
 
         tipos = sorted(df["tipo_erro_efetivo"].dropna().unique().tolist()) if "tipo_erro_efetivo" in df.columns else []
-        sel_tipos = st.multiselect("🔧 Tipo de Erro", options=tipos, default=[],
-                                   placeholder="Todos os tipos")
+        sel_tipos = st.multiselect(
+            "🔧 Tipo de Erro",
+            options=tipos,
+            default=[],
+            placeholder="Todos os tipos",
+            key="tipos",
+        )
 
         statuses = sorted(df["status"].dropna().unique().tolist()) if "status" in df.columns else []
-        sel_status = st.multiselect("📌 Status", options=statuses, default=[],
-                                    placeholder="Todos os status")
+        sel_status = st.multiselect(
+            "📌 Status",
+            options=statuses,
+            default=[],
+            placeholder="Todos os status",
+            key="status",
+        )
 
         prios = sorted(df["prioridade"].dropna().unique().tolist()) if "prioridade" in df.columns else []
-        sel_prio = st.multiselect("🚨 Prioridade", options=prios, default=[],
-                                  placeholder="Todas as prioridades")
+        sel_prio = st.multiselect(
+            "🚨 Prioridade",
+            options=prios,
+            default=[],
+            placeholder="Todas as prioridades",
+            key="prio",
+        )
 
         opcoes_ta       = ["Sim", "Não"]
-        sel_possui_ta   = st.multiselect("🧪 Possui TA", options=opcoes_ta, default=[],
-                                         placeholder="Todos")
+        sel_possui_ta   = st.multiselect(
+            "🧪 Possui TA",
+            options=opcoes_ta,
+            default=[],
+            placeholder="Todos",
+            key="possui_ta",
+        )
 
         opcoes_res      = ["Sim", "Não"]
-        sel_resolvido   = st.multiselect("✅ Problema Resolvido?", options=opcoes_res, default=[],
-                                          placeholder="Todos")
+        sel_resolvido   = st.multiselect(
+            "✅ Problema Resolvido?",
+            options=opcoes_res,
+            default=[],
+            placeholder="Todos",
+            key="problema_resolvido",
+        )
 
         st.markdown("---")
         st.markdown("### ⚙️ Visualização")
-        granularidade = st.radio("Tendência por:", ["Semana", "Mês"], index=1, horizontal=True)
+        granularidade = st.radio(
+            "Tendência por:",
+            ["Semana", "Mês"],
+            index=1,
+            horizontal=True,
+            key="granularidade",
+        )
         auto_refresh = st.toggle(
             "Autoatualizar",
             value=False,
