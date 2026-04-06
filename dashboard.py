@@ -56,7 +56,7 @@ st.markdown("""
     }
 
     /* Headings — herdam a cor do tema, sem fixar valor */
-    h1 { font-size: 1.6rem !important; }
+    h1 { font-size: 1.6rem !important; padding-top: 0.35rem; }
     h2 { font-size: 1.2rem !important; }
     h3 { font-size: 1rem !important; }
 
