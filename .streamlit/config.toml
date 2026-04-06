@@ -1,5 +1,4 @@
-﻿[theme]
-# Dark theme by default; user can switch in the menu.
+[theme]
 base = "dark"
 primaryColor = "#2E75B6"
 backgroundColor = "#0E1117"
@@ -11,7 +10,6 @@ headless = true
 enableXsrfProtection = false
 enableCORS = false
 
-# Required for embeds
 [runner]
 magicEnabled = true
 
