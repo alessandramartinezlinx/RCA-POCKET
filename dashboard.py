@@ -481,25 +481,24 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                # Limpa filtros fixos do sidebar
-                filter_keys = [
-                    "times", "areas", "tipos", "status", "prio",
-                    "possui_ta", "problema_resolvido",
-                    "granularidade", "auto_refresh"
-                ]
-                for key in filter_keys:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # Reseta explicitamente cada filtro para o estado inicial (vazio/valor padrão).
+                st.session_state["times"] = []
+                st.session_state["areas"] = []
+                st.session_state["tipos"] = []
+                st.session_state["status"] = []
+                st.session_state["prio"] = []
+                st.session_state["possui_ta"] = []
+                st.session_state["problema_resolvido"] = []
+                st.session_state["granularidade"] = "Mês"  # índice 1 do radio
+                st.session_state["auto_refresh"] = False
 
-                # Limpa todas as chaves dinâmicas de data
+                # Datas (dependem da coluna de data selecionada)
                 for _col in ["data_resolucao", "data_criacao", "data_filtragem"]:
-                    for _prefix in ["dt_ini", "dt_fim"]:
-                        _k = f"{_prefix}_{_col}"
-                        if _k in st.session_state:
-                            del st.session_state[_k]
-                # Limpa o tipo de data selecionado (volta ao padrão)
-                if "tipo_data" in st.session_state:
-                    del st.session_state["tipo_data"]
+                    st.session_state[f"dt_ini_{_col}"] = min_date.date() if hasattr(min_date, "date") else min_date
+                    st.session_state[f"dt_fim_{_col}"] = max_date.date() if hasattr(max_date, "date") else max_date
+
+                # Coluna de data volta para o padrão (Data de Conclusão)
+                st.session_state["tipo_data"] = "✅ Data de Conclusão"
                 st.rerun()
 
         cfg = load_config()
