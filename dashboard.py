@@ -418,7 +418,16 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                for key in ["dt_ini", "dt_fim"]:
+                # Lista de todas as chaves de filtros usadas
+                filter_keys = [
+                    "dt_ini", "dt_fim",
+                    # Multiselects
+                    "times", "areas", "tipos", "status", "prio",
+                    "possui_ta", "problema_resolvido",
+                    # Outros possíveis
+                    "granularidade", "auto_refresh"
+                ]
+                for key in filter_keys:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
