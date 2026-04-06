@@ -1120,25 +1120,32 @@ def _sort_issues_by_priority(issues: list) -> list:
     
     Retorna nova lista ordenada.
     """
+    PRIORIDADE_PESOS = {
+        "p0 - altissimo": 0,
+        "p0 - altíssimo": 0,
+        "crítica": 0,
+        "alta": 1,
+        "p1 - alto": 1,
+        "média": 2,
+        "p2 - médio": 2,
+        "baixa": 3,
+        "p3 - baixo": 3,
+    }
+
     def _sort_key(issue):
         qtd_vinculos = issue.get("qtd_vinculos", 0)
-        prioridade = issue.get("prioridade", "")
-        
+        prioridade = (issue.get("prioridade", "") or "").strip().lower()
+
         # Usa _data_filtragem (data preservada do Excel, não data_importacao do sync)
         data_filt = _parse_data_filtragem(issue.get("_data_filtragem"))
         dia_filtragem = data_filt.date()
-        
-        # Peso da prioridade: Crítica=0, Alta=1, demais=2
-        if prioridade == "Crítica":
-            peso_prio = 0
-        elif prioridade == "Alta":
-            peso_prio = 1
-        else:
-            peso_prio = 2
-        
+
+        # Peso da prioridade: P0/Crítica=0, P1/Alta=1, P2/Média=2, P3/Baixa=3, demais=9
+        peso_prio = PRIORIDADE_PESOS.get(prioridade, 9)
+
         # 1º Data Filtragem DESC (dia mais recente primeiro)
         # 2º Vínculos DESC (mais vínculos primeiro)
-        # 3º Prioridade ASC (P0 > P1 > outras)
+        # 3º Prioridade ASC (P0 > P1 > P2 > P3 > outras)
         return (-dia_filtragem.toordinal(), -qtd_vinculos, peso_prio)
     
     return sorted(issues, key=_sort_key)
