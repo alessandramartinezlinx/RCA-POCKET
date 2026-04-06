@@ -442,7 +442,6 @@ def build_sidebar(df: pd.DataFrame):
             if st.button("🧹 Limpar filtros", use_container_width=True):
                 # Limpa filtros fixos do sidebar
                 filter_keys = [
-                    "dt_ini", "dt_fim",
                     "times", "areas", "tipos", "status", "prio",
                     "possui_ta", "problema_resolvido",
                     "granularidade", "auto_refresh"
@@ -451,12 +450,13 @@ def build_sidebar(df: pd.DataFrame):
                     if key in st.session_state:
                         del st.session_state[key]
 
-                # Limpa chaves dinâmicas de datas (caso existam)
+                # Limpa todas as chaves dinâmicas de data
                 for _col in ["data_resolucao", "data_criacao", "data_filtragem"]:
                     for _prefix in ["dt_ini", "dt_fim"]:
                         _k = f"{_prefix}_{_col}"
                         if _k in st.session_state:
                             del st.session_state[_k]
+                # Limpa o tipo de data selecionado (volta ao padrão)
                 if "tipo_data" in st.session_state:
                     del st.session_state["tipo_data"]
                 st.rerun()
