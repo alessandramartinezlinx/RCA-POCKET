@@ -1,6 +1,10 @@
 [theme]
-# Mant√©m identidade visual sem for√ßar claro/escuro; o usu√°rio escolhe o tema.
+# Tema escuro como padr„o; o usu·rio ainda pode alternar no menu.
+base = "dark"
 primaryColor = "#2E75B6"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#1B1F2A"
+textColor = "#E6E6E6"
 
 [server]
 headless = true
