@@ -56,13 +56,14 @@ st.markdown("""
     }
 
     /* Headings — herdam a cor do tema, sem fixar valor */
-    h1 { 
-        font-size: 1.6rem !important; 
-        padding-top: 0.6rem;
-        padding-bottom: 0.2rem;
-        line-height: 1.25;
-        display: inline-flex;
-        align-items: center;
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+
+    /* Headings — herdam a cor do tema, sem fixar valor */
+    h1 {
+        font-size: 1.6rem !important;
+        margin-top: 0.6rem !important;
+        margin-bottom: 0.4rem !important;
+        line-height: 1.35 !important;
     }
     h2 { font-size: 1.2rem !important; }
     h3 { font-size: 1rem !important; }
