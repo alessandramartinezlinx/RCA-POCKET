@@ -345,6 +345,8 @@ def start_auto_refresh_watcher(config: dict, enabled: bool):
 # =============================================================================
 
 def build_sidebar(df: pd.DataFrame):
+    reset_id = st.session_state.get("reset_id", 0)
+
     with st.sidebar:
         st.markdown("## 🎯 RCA Pocket")
         st.markdown("---")
@@ -360,7 +362,7 @@ def build_sidebar(df: pd.DataFrame):
             "Filtrar por data de:",
             options=list(_DATE_OPTIONS.keys()),
             index=0,
-            key="tipo_data",
+            key=f"tipo_data_{reset_id}",
         )
         coluna_data = _DATE_OPTIONS[sel_tipo_data]
 
@@ -379,8 +381,8 @@ def build_sidebar(df: pd.DataFrame):
 
         # Chaves incluem coluna_data: ao trocar de coluna, novos widgets são
         # criados do zero e inicializados com min/max da coluna selecionada.
-        _key_ini = f"dt_ini_{coluna_data}"
-        _key_fim = f"dt_fim_{coluna_data}"
+        _key_ini = f"dt_ini_{coluna_data}_{reset_id}"
+        _key_fim = f"dt_fim_{coluna_data}_{reset_id}"
 
         col1, col2 = st.columns(2)
         with col1:
@@ -397,7 +399,7 @@ def build_sidebar(df: pd.DataFrame):
             options=times,
             default=[],
             placeholder="Todos os times",
-            key="times",
+            key=f"times_{reset_id}",
         )
 
         df_filtered_time = df[df["time"].isin(sel_times)] if sel_times else df
@@ -407,7 +409,7 @@ def build_sidebar(df: pd.DataFrame):
             options=areas,
             default=[],
             placeholder="Todas as áreas",
-            key="areas",
+            key=f"areas_{reset_id}",
         )
 
         tipos = sorted(df["tipo_erro_efetivo"].dropna().unique().tolist()) if "tipo_erro_efetivo" in df.columns else []
@@ -416,7 +418,7 @@ def build_sidebar(df: pd.DataFrame):
             options=tipos,
             default=[],
             placeholder="Todos os tipos",
-            key="tipos",
+            key=f"tipos_{reset_id}",
         )
 
         statuses = sorted(df["status"].dropna().unique().tolist()) if "status" in df.columns else []
@@ -425,7 +427,7 @@ def build_sidebar(df: pd.DataFrame):
             options=statuses,
             default=[],
             placeholder="Todos os status",
-            key="status",
+            key=f"status_{reset_id}",
         )
 
         prios = sorted(df["prioridade"].dropna().unique().tolist()) if "prioridade" in df.columns else []
@@ -434,7 +436,7 @@ def build_sidebar(df: pd.DataFrame):
             options=prios,
             default=[],
             placeholder="Todas as prioridades",
-            key="prio",
+            key=f"prio_{reset_id}",
         )
 
         opcoes_ta       = ["Sim", "Não"]
@@ -443,7 +445,7 @@ def build_sidebar(df: pd.DataFrame):
             options=opcoes_ta,
             default=[],
             placeholder="Todos",
-            key="possui_ta",
+            key=f"possui_ta_{reset_id}",
         )
 
         opcoes_res      = ["Sim", "Não"]
@@ -452,7 +454,7 @@ def build_sidebar(df: pd.DataFrame):
             options=opcoes_res,
             default=[],
             placeholder="Todos",
-            key="problema_resolvido",
+            key=f"problema_resolvido_{reset_id}",
         )
 
         st.markdown("---")
@@ -462,12 +464,12 @@ def build_sidebar(df: pd.DataFrame):
             ["Semana", "Mês"],
             index=1,
             horizontal=True,
-            key="granularidade",
+            key=f"granularidade_{reset_id}",
         )
         auto_refresh = st.toggle(
             "Autoatualizar",
             value=False,
-            key="auto_refresh",
+            key=f"auto_refresh_{reset_id}",
             help=f"Verifica mudanças nos arquivos de dados a cada {AUTO_REFRESH_INTERVAL_SECONDS}s.",
         )
         if auto_refresh:
@@ -481,21 +483,7 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                # Remove chaves dos widgets para que voltem ao default vazio na próxima renderização
-                filter_keys = [
-                    "times", "areas", "tipos", "status", "prio",
-                    "possui_ta", "problema_resolvido",
-                    "granularidade", "auto_refresh",
-                ]
-                for key in filter_keys:
-                    st.session_state.pop(key, None)
-
-                # Limpa chaves de datas dependentes da coluna selecionada
-                for _col in ["data_resolucao", "data_criacao", "data_filtragem"]:
-                    for _prefix in ["dt_ini", "dt_fim"]:
-                        st.session_state.pop(f"{_prefix}_{_col}", None)
-                # Coluna de data volta para o padrão
-                st.session_state.pop("tipo_data", None)
+                st.session_state["reset_id"] = reset_id + 1
                 st.rerun()
 
         cfg = load_config()
