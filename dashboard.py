@@ -481,24 +481,21 @@ def build_sidebar(df: pd.DataFrame):
                 st.rerun()
         with col_btn2:
             if st.button("🧹 Limpar filtros", use_container_width=True):
-                # Reseta explicitamente cada filtro para o estado inicial (vazio/valor padrão).
-                st.session_state["times"] = []
-                st.session_state["areas"] = []
-                st.session_state["tipos"] = []
-                st.session_state["status"] = []
-                st.session_state["prio"] = []
-                st.session_state["possui_ta"] = []
-                st.session_state["problema_resolvido"] = []
-                st.session_state["granularidade"] = "Mês"  # índice 1 do radio
-                st.session_state["auto_refresh"] = False
+                # Remove chaves dos widgets para que voltem ao default vazio na próxima renderização
+                filter_keys = [
+                    "times", "areas", "tipos", "status", "prio",
+                    "possui_ta", "problema_resolvido",
+                    "granularidade", "auto_refresh",
+                ]
+                for key in filter_keys:
+                    st.session_state.pop(key, None)
 
-                # Datas (dependem da coluna de data selecionada)
+                # Limpa chaves de datas dependentes da coluna selecionada
                 for _col in ["data_resolucao", "data_criacao", "data_filtragem"]:
-                    st.session_state[f"dt_ini_{_col}"] = min_date.date() if hasattr(min_date, "date") else min_date
-                    st.session_state[f"dt_fim_{_col}"] = max_date.date() if hasattr(max_date, "date") else max_date
-
-                # Coluna de data volta para o padrão (Data de Conclusão)
-                st.session_state["tipo_data"] = "✅ Data de Conclusão"
+                    for _prefix in ["dt_ini", "dt_fim"]:
+                        st.session_state.pop(f"{_prefix}_{_col}", None)
+                # Coluna de data volta para o padrão
+                st.session_state.pop("tipo_data", None)
                 st.rerun()
 
         cfg = load_config()
